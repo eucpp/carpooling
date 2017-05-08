@@ -1,15 +1,54 @@
-import jade.core.Agent;
-
-import javax.swing.*;
+import java.util.*;
+import jade.core.*;
 
 public class CarpoolAgent extends Agent {
 
-    private MapModel model;
+    private MapModel map;
     private CarpoolView view;
 
+    private ArrayList<PassengerAgent> passengers;
+    private ArrayList<Integer> drivers;
+
     protected void setup() {
-        model = MapModel.generate();
-        view = new CarpoolView(model);
-        view.start();
+        map = MapModel.generate();
+        passengers = generatePassengers(1, map);
+
+        view = new CarpoolView(map);
+
+        view.start(passengers);
+    }
+
+    private static ArrayList<PassengerAgent> generatePassengers(int n, MapModel map) {
+        ArrayList<PassengerAgent> passengers = new ArrayList<>(n);
+        ArrayList<MapModel.Node> nodes = new ArrayList<>(map.getGraph().vertexSet());
+        Random rnd = new Random();
+        for (int i = 0; i < n; ++i) {
+            MapModel.Node from = nodes.get(rnd.nextInt(nodes.size()));
+            MapModel.Node to = nodes.get(rnd.nextInt(nodes.size()));
+            while (to == from) {
+                to = nodes.get(rnd.nextInt(nodes.size()));
+            }
+            PassengerAgent passenger = new PassengerAgent(new PassengerAgent.Intention(from, to));
+            passengers.add(passenger);
+        }
+        return passengers;
+    }
+
+    private static ArrayList<VehicleAgent> generateDrivers(int n, ArrayList<PassengerAgent> passengers, MapModel map) {
+        ArrayList<VehicleAgent> vehicles = new ArrayList<>(n);
+        Set<Integer> pickedDrivers = new HashSet<>();
+        Random rnd = new Random();
+        for (int i = 0; i < n; ++i) {
+            int r = rnd.nextInt();
+            while (pickedDrivers.contains(r)) {
+                r = rnd.nextInt();
+            }
+            pickedDrivers.add(r);
+            PassengerAgent driver = passengers.get(r);
+            VehicleAgent vehicle = new VehicleAgent(driver);
+            driver.setVehicle(vehicle);
+            vehicles.add(vehicle);
+        }
+        return vehicles;
     }
 }

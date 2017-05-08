@@ -11,9 +11,14 @@ public class MapModel {
         Node() {
             id = next_id++;
         }
+
+        @Override
+        public String toString() {
+            return Integer.toString(id);
+        }
     }
 
-    public static class Edge {}
+    public static class Edge { }
 
     private UndirectedGraph<Node, Edge> graph;
 
