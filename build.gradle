@@ -10,6 +10,10 @@ repositories {
 
 dependencies {
     compile group: 'net.sf.ingenias', name: 'jade', version: '4.3'
+    compile group: 'org.jgrapht', name: 'jgrapht-core', version: '1.0.1'
+    compile group: 'org.jgrapht', name: 'jgrapht-ext', version: '1.0.1'
+    compile group: 'org.tinyjee.jgraphx', name: 'jgraphx', version: '3.4.1.3'
+
     testCompile group: 'junit', name: 'junit', version: '4.12'
 }
 
@@ -18,5 +22,5 @@ task run(type: JavaExec) {
 
     main = 'jade.Boot'
 
-    args = ["-gui", "-agents", "carpool:CarpoolAgent"]
+    args = ["-agents", "carpool:CarpoolAgent"]
 }
