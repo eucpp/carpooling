@@ -39,8 +39,17 @@ public class PassengerAgent extends Agent implements Passenger {
         this.vehicle = vehicle;
     }
 
+    @Override
+    public String toString() {
+        return "Passenger" + Integer.toString(id);
+    }
+
     protected void setup() {
         System.out.println("Starting Passenger Agent " + getLocalName());
+
+        // explore nearest drivers
+
     }
+
 
 }

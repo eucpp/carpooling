@@ -1,7 +1,28 @@
 import java.util.*;
+
 import jade.core.*;
+import jade.wrapper.*;
+
+import jade.domain.*;
+import jade.domain.FIPAAgentManagement.*;
 
 public class CarpoolAgent extends Agent {
+
+    public static String PASSENGER_SERVICE_NAME = "PassengerService";
+    public static String VEHICLE_SERVICE_NAME = "VehicleService";
+
+    private static ServiceDescription passengerService;
+    private static ServiceDescription vehicleService;
+
+    static {
+        passengerService = new ServiceDescription();
+        passengerService.setName(PASSENGER_SERVICE_NAME);
+        passengerService.setType("carpooling-service");
+
+        vehicleService = new ServiceDescription();
+        vehicleService.setName(VEHICLE_SERVICE_NAME);
+        vehicleService.setType("carpooling-service");
+    }
 
     private MapModel map;
     private CarpoolView view;
@@ -10,13 +31,49 @@ public class CarpoolAgent extends Agent {
     private ArrayList<VehicleAgent> vehicles;
 
     protected void setup() {
-        map = MapModel.generate(8);
-        passengers = generatePassengers(2, map);
-        vehicles = generateVehicles(1, passengers, map);
+        try {
+            map = MapModel.generate(8);
 
-        view = new CarpoolView(map);
+            passengers = generatePassengers(2, map);
+            vehicles = generateVehicles(1, passengers, map);
 
-        view.drawPassengers(passengers);
+            for (PassengerAgent passenger : passengers) {
+                registerPassenger(getContainerController(), passenger);
+            }
+
+            for (VehicleAgent vehicle : vehicles) {
+                registerVehicle(getContainerController(), vehicle);
+            }
+
+            view = new CarpoolView(map);
+            view.drawPassengers(passengers);
+        } catch (Exception e) {
+            System.out.println("Error: " + e);
+            System.exit(1); // ???
+        }
+    }
+
+    private static void registerPassenger(ContainerController container, PassengerAgent agent)
+            throws StaleProxyException, FIPAException {
+        AgentController ac = container.acceptNewAgent(agent.toString(), agent);
+        ac.start();
+
+        DFAgentDescription dfd = new DFAgentDescription();
+        dfd.setName(agent.getAID());
+        dfd.addServices(passengerService);
+
+        DFService.register(agent, dfd);
+    }
+
+    private static void registerVehicle(ContainerController container, VehicleAgent agent)
+            throws StaleProxyException, FIPAException {
+        AgentController ac = container.acceptNewAgent(agent.toString(), agent);
+        ac.start();
+
+        DFAgentDescription dfd = new DFAgentDescription();
+        dfd.setName(agent.getAID());
+        dfd.addServices(vehicleService);
+        DFService.register(agent, dfd);
     }
 
     private static ArrayList<PassengerAgent> generatePassengers(int n, MapModel map) {

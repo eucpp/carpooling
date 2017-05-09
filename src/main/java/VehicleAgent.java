@@ -39,7 +39,12 @@ public class VehicleAgent extends Agent implements Vehicle {
         return this.capacity;
     }
 
+    @Override
+    public String toString() {
+        return "Driver" + driver.getID();
+    }
+
     protected void setup() {
-        System.out.println("Starting Driver Agent " + getLocalName());
+        System.out.println("Starting Vehicle Agent " + getLocalName());
     }
 }
