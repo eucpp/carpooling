@@ -1,5 +1,8 @@
+import java.util.*;
 import org.jgrapht.*;
+import org.jgrapht.alg.*;
 import org.jgrapht.graph.*;
+import org.jgrapht.generate.*;
 
 public class MapModel {
 
@@ -22,27 +25,23 @@ public class MapModel {
 
     private UndirectedGraph<Node, Edge> graph;
 
-    public static MapModel generate() {
+    public static MapModel generate(int n) {
         MapModel model = new MapModel();
 
-        Node v1 = new Node();
-        Node v2 = new Node();
-        Node v3 = new Node();
-        Node v4 = new Node();
-        Node v5 = new Node();
+        double p = 0.5;
+        long seed = 42;
+        GraphGenerator<Node, Edge, Node> generator = new GnpRandomGraphGenerator<>(n, p, seed);
+        generator.generateGraph(model.graph, () -> new Node(), null);
 
-        model.graph.addVertex(v1);
-        model.graph.addVertex(v2);
-        model.graph.addVertex(v3);
-        model.graph.addVertex(v4);
-        model.graph.addVertex(v5);
-
-        model.graph.addEdge(v1, v2);
-        model.graph.addEdge(v2, v3);
-        model.graph.addEdge(v3, v1);
-        model.graph.addEdge(v4, v3);
-        model.graph.addEdge(v1, v5);
-        model.graph.addEdge(v5, v2);
+        ListenableUndirectedGraph<Node, Edge> g = new ListenableUndirectedGraph<>(model.graph);
+        ConnectivityInspector<Node, Edge> inspector = new ConnectivityInspector<>(g);
+        g.addGraphListener(inspector);
+        while (!inspector.isGraphConnected()) {
+            List<Set<Node>> components = inspector.connectedSets();
+            Set<Node> c1 = components.get(0);
+            Set<Node> c2 = components.get(1);
+            g.addEdge(c1.iterator().next(), c2.iterator().next());
+        }
 
         return model;
     }

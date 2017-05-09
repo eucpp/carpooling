@@ -10,7 +10,7 @@ public class CarpoolAgent extends Agent {
     private ArrayList<VehicleAgent> vehicles;
 
     protected void setup() {
-        map = MapModel.generate();
+        map = MapModel.generate(8);
         passengers = generatePassengers(2, map);
         vehicles = generateVehicles(1, passengers, map);
 

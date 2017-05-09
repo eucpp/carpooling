@@ -11,6 +11,8 @@ public interface Passenger {
         }
     }
 
+    int getID();
+
     Passenger.Intention getIntention();
 
     Vehicle getVehicle();
