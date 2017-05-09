@@ -2,15 +2,15 @@ import jade.core.Agent;
 import java.util.ArrayList;
 import java.util.Random;
 
-public class VehicleAgent extends Agent {
+public class VehicleAgent extends Agent implements Vehicle {
 
-    private final PassengerAgent driver;
-    private ArrayList<PassengerAgent> passengers;
+    private final Passenger driver;
+    private ArrayList<Passenger> passengers;
     private final int capacity;
 
     private static final Random rnd = new Random();
 
-    public VehicleAgent(PassengerAgent driver) {
+    public VehicleAgent(Passenger driver) {
         this.driver = driver;
         this.passengers = new ArrayList<>();
 
@@ -22,6 +22,21 @@ public class VehicleAgent extends Agent {
         } else {
             this.capacity = 5;
         }
+    }
+
+    @Override
+    public Passenger getDriver() {
+        return this.driver;
+    }
+
+    @Override
+    public ArrayList<Passenger> getPassengers() {
+        return this.passengers;
+    }
+
+    @Override
+    public int getCapacity() {
+        return this.capacity;
     }
 
     protected void setup() {

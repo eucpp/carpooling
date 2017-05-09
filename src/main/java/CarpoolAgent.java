@@ -7,15 +7,16 @@ public class CarpoolAgent extends Agent {
     private CarpoolView view;
 
     private ArrayList<PassengerAgent> passengers;
-    private ArrayList<Integer> drivers;
+    private ArrayList<VehicleAgent> vehicles;
 
     protected void setup() {
         map = MapModel.generate();
-        passengers = generatePassengers(1, map);
+        passengers = generatePassengers(2, map);
+        vehicles = generateVehicles(1, passengers, map);
 
         view = new CarpoolView(map);
 
-        view.start(passengers);
+        view.drawPassengers(passengers);
     }
 
     private static ArrayList<PassengerAgent> generatePassengers(int n, MapModel map) {
@@ -34,17 +35,17 @@ public class CarpoolAgent extends Agent {
         return passengers;
     }
 
-    private static ArrayList<VehicleAgent> generateDrivers(int n, ArrayList<PassengerAgent> passengers, MapModel map) {
+    private static ArrayList<VehicleAgent> generateVehicles(int n, ArrayList<? extends Passenger> passengers, MapModel map) {
         ArrayList<VehicleAgent> vehicles = new ArrayList<>(n);
         Set<Integer> pickedDrivers = new HashSet<>();
         Random rnd = new Random();
         for (int i = 0; i < n; ++i) {
-            int r = rnd.nextInt();
+            int r = rnd.nextInt(passengers.size());
             while (pickedDrivers.contains(r)) {
                 r = rnd.nextInt();
             }
             pickedDrivers.add(r);
-            PassengerAgent driver = passengers.get(r);
+            Passenger driver = passengers.get(r);
             VehicleAgent vehicle = new VehicleAgent(driver);
             driver.setVehicle(vehicle);
             vehicles.add(vehicle);

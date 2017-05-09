@@ -29,16 +29,20 @@ public class MapModel {
         Node v2 = new Node();
         Node v3 = new Node();
         Node v4 = new Node();
+        Node v5 = new Node();
 
         model.graph.addVertex(v1);
         model.graph.addVertex(v2);
         model.graph.addVertex(v3);
         model.graph.addVertex(v4);
+        model.graph.addVertex(v5);
 
         model.graph.addEdge(v1, v2);
         model.graph.addEdge(v2, v3);
         model.graph.addEdge(v3, v1);
         model.graph.addEdge(v4, v3);
+        model.graph.addEdge(v1, v5);
+        model.graph.addEdge(v5, v2);
 
         return model;
     }

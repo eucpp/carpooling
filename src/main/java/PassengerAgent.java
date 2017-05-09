@@ -2,34 +2,30 @@ import jade.core.Agent;
 
 import java.sql.DriverManager;
 
-public class PassengerAgent extends Agent {
+public class PassengerAgent extends Agent implements Passenger {
 
-    public static class Intention {
-        public final MapModel.Node from;
-        public final MapModel.Node to;
+    private final Passenger.Intention intention;
+    private Vehicle vehicle;
 
-        public Intention(MapModel.Node from, MapModel.Node to) {
-            this.from = from;
-            this.to = to;
-        }
-    }
-
-    private final Intention intention;
-    private VehicleAgent vehicle;
-
-    public PassengerAgent(Intention intention) {
+    public PassengerAgent(Passenger.Intention intention) {
         this.intention = intention;
+
+        System.out.printf("Creating new passenger that want to move from %s to %s\n",
+                intention.from.toString(), intention.to.toString());
     }
 
-    public Intention getIntention() {
+    @Override
+    public Passenger.Intention getIntention() {
         return this.intention;
     }
 
-    public VehicleAgent getVehicle() {
+    @Override
+    public Vehicle getVehicle() {
         return this.vehicle;
     }
 
-    public void setVehicle(VehicleAgent vehicle) {
+    @Override
+    public void setVehicle(Vehicle vehicle) {
         this.vehicle = vehicle;
     }
 
