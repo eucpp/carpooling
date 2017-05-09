@@ -1,8 +1,10 @@
 import java.util.*;
 import org.jgrapht.*;
-import org.jgrapht.alg.*;
+import org.jgrapht.alg.shortestpath.*;
 import org.jgrapht.graph.*;
 import org.jgrapht.generate.*;
+
+import org.jgrapht.alg.ConnectivityInspector;
 
 public class MapModel {
 
@@ -10,9 +12,15 @@ public class MapModel {
         public final int id;
 
         private static int next_id = 0;
+        private static HashMap<Integer, Node> nodes;
+
+        public static Node getNodeByID(int id) {
+            return nodes.get(id);
+        }
 
         Node() {
             id = next_id++;
+            nodes.put(id, this);
         }
 
         @Override
@@ -23,7 +31,41 @@ public class MapModel {
 
     public static class Edge { }
 
+    public static class Route {
+        private List<Edge> path;
+        private double cost;
+
+        public static final Route INFINITE_ROUTE = new Route(null, Double.MAX_VALUE);
+
+        public static Route emptyRoute() {
+            return new Route(new ArrayList<>());
+        }
+
+        public Route(List<Edge> path) {
+            this(path, path.size());
+        }
+
+        List<Edge> getPath() {
+            return path;
+        }
+
+        public double getCost() {
+            return cost;
+        }
+
+        public void join(Route route) {
+            path.addAll(route.path);
+            cost += route.cost;
+        }
+
+        private Route(List<Edge> path, double cost) {
+            this.path = path;
+            this.cost = cost;
+        }
+    }
+
     private UndirectedGraph<Node, Edge> graph;
+    private DijkstraShortestPath<MapModel.Node, MapModel.Edge> dijkstra;
 
     public static MapModel generate(int n) {
         MapModel model = new MapModel();
@@ -50,7 +92,13 @@ public class MapModel {
         return graph;
     }
 
+    public Route getRoute(Node source, Node sink) {
+        GraphPath<Node, Edge> path = dijkstra.getPath(source, sink);
+        return new Route(path.getEdgeList());
+    }
+
     private MapModel() {
         graph = new SimpleGraph<Node, Edge>(Edge.class);
+        dijkstra = new DijkstraShortestPath<>(graph);
     }
 }

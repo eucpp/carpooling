@@ -1,7 +1,12 @@
-import jade.core.Agent;
-import jdk.nashorn.internal.ir.annotations.Ignore;
+import jade.core.*;
+import java.util.*;
+import java.util.ArrayList;
 
-import java.sql.DriverManager;
+import jade.util.leap.*;
+import org.json.*;
+
+import jade.lang.acl.ACLMessage;
+import jade.proto.ContractNetInitiator;
 
 public class PassengerAgent extends Agent implements Passenger {
 
@@ -46,10 +51,70 @@ public class PassengerAgent extends Agent implements Passenger {
 
     protected void setup() {
         System.out.println("Starting Passenger Agent " + getLocalName());
-
-        // explore nearest drivers
-
     }
 
+    private static class InitatorBehavior extends ContractNetInitiator {
 
+        private final int pid;
+
+        InitatorBehavior(PassengerAgent agent, ArrayList<AID> vehicles) {
+            super(agent, createCFP(agent, vehicles));
+            pid = agent.getID();
+        }
+
+        private static ACLMessage createCFP(PassengerAgent sender, ArrayList<AID> recievers)  {
+            ACLMessage cfp = new ACLMessage(ACLMessage.CFP);
+            for (AID reciever : recievers) {
+                cfp.addReceiver(reciever);
+            }
+
+            Passenger.Intention intention = sender.getIntention();
+
+            cfp.setLanguage("json");
+            String content = "{\"pid\": %d, \"from\": %d, \"to\": %d}";
+            cfp.setContent(String.format(content, sender.getID(), intention.from, intention.to));
+
+            return cfp;
+        }
+
+        private static class Offer {
+            public final AID aid;
+            public final double cost;
+
+            Offer(AID aid, double cost) {
+                this.aid = aid;
+                this.cost = cost;
+            }
+        }
+
+        @Override
+        protected void handleAllResponses(Vector responses, Vector acceptances) {
+            ArrayList<Offer> offers = new ArrayList<>();
+            for (Object obj : responses) {
+                ACLMessage rsp = (ACLMessage) obj;
+
+                System.out.printf("Passenger%d receives message: %s\n", pid, rsp);
+
+                if (rsp.getPerformative() == ACLMessage.PROPOSE) {
+                    JSONObject content = new JSONObject(rsp.getContent());
+                    Offer offer = new Offer(rsp.getSender(), content.getDouble("cost"));
+                    offers.add(offer);
+                }
+            }
+            if (offers.isEmpty()) {
+                return;
+            }
+            offers.sort((Offer a, Offer b) -> Double.compare(a.cost, b.cost));
+
+            ACLMessage acceptMsg = new ACLMessage(ACLMessage.ACCEPT_PROPOSAL);
+            acceptMsg.addReceiver(offers.get(0).aid);
+            acceptances.add(acceptMsg);
+
+            for (int i = 1; i < offers.size(); ++i) {
+                ACLMessage rejectMsg = new ACLMessage(ACLMessage.REJECT_PROPOSAL);
+                acceptMsg.addReceiver(offers.get(i).aid);
+                acceptances.add(rejectMsg);
+            }
+        }
+    }
 }
