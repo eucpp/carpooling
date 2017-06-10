@@ -1,13 +1,10 @@
 import java.util.*;
 
-import org.jgrapht.GraphPath;
-import org.jgrapht.alg.shortestpath.DijkstraShortestPath;
 import org.json.*;
 
 import jade.core.*;
 import jade.lang.acl.*;
 
-import jade.domain.FIPANames;
 import jade.proto.ContractNetResponder;
 
 
@@ -47,31 +44,50 @@ public class VehicleAgent extends Agent implements Vehicle {
         System.out.println("Starting Vehicle Agent " + getLocalName());
     }
 
-    private static class ResponderBehavior extends ContractNetResponder {
+    private static class Destination {
+        public enum Tag {
+            SOURCE, SINK
+        }
 
-        private MapModel.Route currentRoute;
+        public final AID aid;
+        public final Tag tag;
+        public final MapModel.Node node;
+
+        public Destination(AID aid, Tag tag, MapModel.Node node) {
+            this.aid = aid;
+            this.tag = tag;
+            this.node = node;
+        }
+    }
+
+    private static class Plan {
+        private final MapModel.Route route;
+        private final Set<Destination> destinations;
+        private final double payment;
+
+        public Plan(MapModel.Route route, Set<Destination> destinations, double payment) {
+            this.route = route;
+            this.destinations = destinations;
+            this.payment = payment;
+        }
+    }
+
+    private static class ResponderBehavior extends ContractNetResponder {
+        private Plan currentPlan;
+        private double currentCost;
+        private Map<AID, MapModel.Route> passengerRoutes;
+        private Passenger.Intention driverIntention;
         private MapModel map;
 
         ResponderBehavior(VehicleAgent agent) {
             super(agent, createMessageTemplate());
         }
 
-//        private static class
-
-        private static class Destination {
-            public enum Tag {
-                SOURCE, SINK
-            }
-
-            public final AID aid;
-            public final Tag tag;
-            public final MapModel.Node node;
-
-            public Destination(AID aid, Tag tag, MapModel.Node node) {
-                this.aid = aid;
-                this.tag = tag;
-                this.node = node;
-            }
+        private static MessageTemplate createMessageTemplate() {
+            return MessageTemplate.and(
+                    MessageTemplate.MatchPerformative(ACLMessage.CFP),
+                    MessageTemplate.MatchLanguage("json")
+            );
         }
 
         @Override
@@ -79,14 +95,57 @@ public class VehicleAgent extends Agent implements Vehicle {
             JSONObject content = new JSONObject(cfp.getContent());
             MapModel.Node from = MapModel.Node.getNodeByID(content.getInt("from"));
             MapModel.Node to = MapModel.Node.getNodeByID(content.getInt("to"));
+            int pricePerKm = content.getInt("price");
 
+            HashSet<Destination> newDestinations = new HashSet<>(currentPlan.destinations);
+            newDestinations.add(new Destination(cfp.getSender(), Destination.Tag.SOURCE, from));
+            newDestinations.add(new Destination(cfp.getSender(), Destination.Tag.SINK, to));
+
+            Map<AID, MapModel.Route> routes = new HashMap<>();
+            for (AID aid: passengerRoutes.keySet()) {
+                routes.put(aid, MapModel.Route.emptyRoute());
+            }
+
+            MapModel.Route vehicleRoute = computeRoute(
+                    driverIntention,
+                    (Set<Destination>) newDestinations.clone(),
+                    routes
+            );
+
+            double payment = pricePerKm * vehicleRoute.getLength();
+            double totalPayment = currentPlan.payment + payment;
+
+            double newCost = totalPayment / vehicleRoute.getLength();
+            if (newCost < currentCost) {
+                currentCost = newCost;
+                currentPlan = new Plan(vehicleRoute, newDestinations, totalPayment);
+                passengerRoutes = routes;
+
+                ACLMessage propose = new ACLMessage(ACLMessage.PROPOSE);
+                propose.addReceiver(cfp.getSender());
+                propose.setLanguage("json");
+                propose.setContent(String.format("{ \"payment\": %f}", payment));
+
+                return propose;
+            } else {
+                ACLMessage refuse = new ACLMessage(ACLMessage.REFUSE);
+                refuse.addReceiver(cfp.getSender());
+                refuse.setLanguage("json");
+                return refuse;
+            }
+        }
+
+        @Override protected ACLMessage handleAcceptProposal(
+                ACLMessage cfp, ACLMessage propose, ACLMessage accept
+        ) {
 
         }
 
         private MapModel.Route computeRoute(
                 Passenger.Intention driverIntention,
                 Set<Destination> destinations,
-                Map<AID, MapModel.Route> routes) {
+                Map<AID, MapModel.Route> routes
+        ) {
             Set<AID> onBoard = new HashSet<>();
 
             MapModel.Node curr = driverIntention.from;
@@ -100,7 +159,7 @@ public class VehicleAgent extends Agent implements Vehicle {
                     if ((destination.tag == Destination.Tag.SOURCE && onBoard.size() < CAPACITY) ||
                             (destination.tag == Destination.Tag.SINK && onBoard.contains(destination.aid))) {
                         MapModel.Route route = map.getRoute(curr, destination.node);
-                        if (route.getCost() < minRoute.getCost()) {
+                        if (route.getLength() < minRoute.getLength()) {
                             minRoute = route;
                             nextDestination = destination;
                         }
@@ -126,14 +185,5 @@ public class VehicleAgent extends Agent implements Vehicle {
 
             return vehicleRoute;
         }
-
-        private static MessageTemplate createMessageTemplate() {
-            return MessageTemplate.and(
-                MessageTemplate.MatchPerformative(ACLMessage.CFP),
-                MessageTemplate.MatchLanguage("json")
-            );
-        }
-
-
     }
 }

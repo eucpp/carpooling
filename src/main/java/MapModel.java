@@ -33,7 +33,7 @@ public class MapModel {
 
     public static class Route {
         private List<Edge> path;
-        private double cost;
+        private double length;
 
         public static final Route INFINITE_ROUTE = new Route(null, Double.MAX_VALUE);
 
@@ -49,18 +49,18 @@ public class MapModel {
             return path;
         }
 
-        public double getCost() {
-            return cost;
+        public double getLength() {
+            return length;
         }
 
         public void join(Route route) {
             path.addAll(route.path);
-            cost += route.cost;
+            length += route.length;
         }
 
         private Route(List<Edge> path, double cost) {
             this.path = path;
-            this.cost = cost;
+            this.length = cost;
         }
     }
 
