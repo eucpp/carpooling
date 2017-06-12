@@ -31,15 +31,9 @@ public class MapModel {
 
     public static class Edge { }
 
-    public static class Route {
+    public class Route {
         private List<Edge> path;
         private double length;
-
-        public static final Route INFINITE_ROUTE = new Route(null, Double.MAX_VALUE);
-
-        public static Route emptyRoute() {
-            return new Route(new ArrayList<>());
-        }
 
         public Route(List<Edge> path) {
             this(path, path.size());
@@ -58,9 +52,26 @@ public class MapModel {
             length += route.length;
         }
 
-        private Route(List<Edge> path, double cost) {
+        @Override
+        public String toString() {
+            if (path == null) {
+                return "INFINITE";
+            }
+            if (path.isEmpty()) {
+                return "";
+            }
+            StringBuilder builder = new StringBuilder();
+            for (Edge edge: path) {
+                builder.append(MapModel.this.graph.getEdgeSource(edge)).append(" -> ");
+            }
+            int lastIdx = path.size() - 1;
+            builder.append(MapModel.this.graph.getEdgeSource(path.get(lastIdx)));
+            return builder.toString();
+        }
+
+        private Route(List<Edge> path, double length) {
             this.path = path;
-            this.length = cost;
+            this.length = length;
         }
     }
 
@@ -95,6 +106,12 @@ public class MapModel {
     public Route getRoute(Node source, Node sink) {
         GraphPath<Node, Edge> path = dijkstra.getPath(source, sink);
         return new Route(path.getEdgeList());
+    }
+
+    public final Route INFINITE_ROUTE = new Route(null, Double.MAX_VALUE);
+
+    public Route emptyRoute() {
+        return new Route(new ArrayList<>());
     }
 
     private MapModel() {

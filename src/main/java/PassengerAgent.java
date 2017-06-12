@@ -1,8 +1,10 @@
-import jade.core.*;
 import java.util.*;
 import java.util.ArrayList;
 
-import jade.util.leap.*;
+import jade.core.*;
+import jade.domain.*;
+import jade.domain.FIPAAgentManagement.*;
+
 import org.json.*;
 
 import jade.lang.acl.ACLMessage;
@@ -49,41 +51,62 @@ public class PassengerAgent extends Agent implements Passenger {
         return "Passenger" + Integer.toString(id);
     }
 
+    @Override
     protected void setup() {
-        System.out.println("Starting Passenger Agent " + getLocalName());
+        try {
+            System.out.println("Starting Passenger Agent " + getLocalName());
+
+            ArrayList<AID> vehicles = new ArrayList<>();
+            DFAgentDescription template = new DFAgentDescription();
+            template.addServices(CarpoolAgent.PASSENGER_SERVICE);
+            for (DFAgentDescription description: DFService.search(this, template)) {
+                vehicles.add(description.getName());
+            }
+            addBehaviour(new InitatorBehavior(this, vehicles));
+        } catch (Exception e) {
+            System.out.println("Error: " + e);
+            System.exit(1); // ???
+        }
     }
 
     private static class InitatorBehavior extends ContractNetInitiator {
 
-        private final int pid;
+        ArrayList<AID> vehicles;
 
         InitatorBehavior(PassengerAgent agent, ArrayList<AID> vehicles) {
-            super(agent, createCFP(agent, vehicles));
-            pid = agent.getID();
+            super(agent, createCFP(agent));
+            this.vehicles = vehicles;
         }
 
-        private static ACLMessage createCFP(PassengerAgent sender, ArrayList<AID> recievers)  {
+        private static ACLMessage createCFP(PassengerAgent sender)  {
             ACLMessage cfp = new ACLMessage(ACLMessage.CFP);
-            for (AID reciever : recievers) {
-                cfp.addReceiver(reciever);
-            }
-
             Passenger.Intention intention = sender.getIntention();
-
             cfp.setLanguage("json");
-            String content = "{\"pid\": %d, \"from\": %d, \"to\": %d}";
-            cfp.setContent(String.format(content, sender.getID(), intention.from, intention.to));
-
+            cfp.setContent(new JSONObject()
+                .put("from", intention.from)
+                .put("to", intention.to)
+                .toString()
+            );
             return cfp;
+        }
+
+        @Override
+        protected Vector<ACLMessage> prepareCfps(ACLMessage cfp) {
+            Vector<ACLMessage> cfps = new Vector<>();
+            cfps.add((ACLMessage) cfp.clone());
+            for (AID vehicle: vehicles) {
+                cfps.get(0).addReceiver(vehicle);
+            }
+            return cfps;
         }
 
         private static class Offer {
             public final AID aid;
-            public final double cost;
+            public final double payment;
 
-            Offer(AID aid, double cost) {
+            Offer(AID aid, double payment) {
                 this.aid = aid;
-                this.cost = cost;
+                this.payment = payment;
             }
         }
 
@@ -93,18 +116,28 @@ public class PassengerAgent extends Agent implements Passenger {
             for (Object obj : responses) {
                 ACLMessage rsp = (ACLMessage) obj;
 
-                System.out.printf("Passenger%d receives message: %s\n", pid, rsp);
+                System.out.printf(
+                        "Passenger %s receives proposal: %s\n",
+                        this.getAgent().getAID().toString(),
+                        rsp
+                );
 
                 if (rsp.getPerformative() == ACLMessage.PROPOSE) {
                     JSONObject content = new JSONObject(rsp.getContent());
-                    Offer offer = new Offer(rsp.getSender(), content.getDouble("cost"));
+                    Offer offer = new Offer(rsp.getSender(), content.getDouble("payment"));
                     offers.add(offer);
                 }
             }
             if (offers.isEmpty()) {
                 return;
             }
-            offers.sort((Offer a, Offer b) -> Double.compare(a.cost, b.cost));
+            offers.sort((Offer a, Offer b) -> Double.compare(a.payment, b.payment));
+
+            System.out.printf(
+                    "Passenger %s have chosen proposal from vehicle %s\n",
+                    this.getAgent().getAID().toString(),
+                    offers.get(0).aid.toString()
+            );
 
             ACLMessage acceptMsg = new ACLMessage(ACLMessage.ACCEPT_PROPOSAL);
             acceptMsg.addReceiver(offers.get(0).aid);
@@ -115,6 +148,11 @@ public class PassengerAgent extends Agent implements Passenger {
                 acceptMsg.addReceiver(offers.get(i).aid);
                 acceptances.add(rejectMsg);
             }
+        }
+
+        @Override
+        protected void handleInform(ACLMessage inform) {
+
         }
     }
 }

@@ -11,17 +11,17 @@ public class CarpoolAgent extends Agent {
     public static String PASSENGER_SERVICE_NAME = "PassengerService";
     public static String VEHICLE_SERVICE_NAME = "VehicleService";
 
-    private static ServiceDescription passengerService;
-    private static ServiceDescription vehicleService;
+    public static ServiceDescription PASSENGER_SERVICE;
+    public static ServiceDescription VEHICLE_SERVICE;
 
     static {
-        passengerService = new ServiceDescription();
-        passengerService.setName(PASSENGER_SERVICE_NAME);
-        passengerService.setType("carpooling-service");
+        PASSENGER_SERVICE = new ServiceDescription();
+        PASSENGER_SERVICE.setName(PASSENGER_SERVICE_NAME);
+        PASSENGER_SERVICE.setType("carpooling-service");
 
-        vehicleService = new ServiceDescription();
-        vehicleService.setName(VEHICLE_SERVICE_NAME);
-        vehicleService.setType("carpooling-service");
+        VEHICLE_SERVICE = new ServiceDescription();
+        VEHICLE_SERVICE.setName(VEHICLE_SERVICE_NAME);
+        VEHICLE_SERVICE.setType("carpooling-service");
     }
 
     private MapModel map;
@@ -34,19 +34,21 @@ public class CarpoolAgent extends Agent {
         try {
             map = MapModel.generate(8);
 
-            passengers = generatePassengers(2, map);
-            vehicles = generateVehicles(1, passengers, map);
+            passengers = generatePassengers(3, map);
+            vehicles = generateVehicles(2, passengers, map);
 
             for (PassengerAgent passenger : passengers) {
-                registerPassenger(getContainerController(), passenger);
+                if (passenger.getVehicle() == null) {
+                    registerPassenger(getContainerController(), passenger);
+                }
             }
 
             for (VehicleAgent vehicle : vehicles) {
                 registerVehicle(getContainerController(), vehicle);
             }
 
-            view = new CarpoolView(map);
-            view.drawPassengers(passengers);
+//            view = new CarpoolView(map);
+//            view.drawPassengers(passengers);
         } catch (Exception e) {
             System.out.println("Error: " + e);
             System.exit(1); // ???
@@ -60,7 +62,7 @@ public class CarpoolAgent extends Agent {
 
         DFAgentDescription dfd = new DFAgentDescription();
         dfd.setName(agent.getAID());
-        dfd.addServices(passengerService);
+        dfd.addServices(PASSENGER_SERVICE);
 
         DFService.register(agent, dfd);
     }
@@ -72,7 +74,7 @@ public class CarpoolAgent extends Agent {
 
         DFAgentDescription dfd = new DFAgentDescription();
         dfd.setName(agent.getAID());
-        dfd.addServices(vehicleService);
+        dfd.addServices(VEHICLE_SERVICE);
         DFService.register(agent, dfd);
     }
 
@@ -103,7 +105,7 @@ public class CarpoolAgent extends Agent {
             }
             pickedDrivers.add(r);
             Passenger driver = passengers.get(r);
-            VehicleAgent vehicle = new VehicleAgent(driver);
+            VehicleAgent vehicle = new VehicleAgent(driver, map);
             driver.setVehicle(vehicle);
             vehicles.add(vehicle);
         }
