@@ -37,20 +37,21 @@ public class CarpoolAgent extends Agent {
             passengers = generatePassengers(3, map);
             vehicles = generateVehicles(2, passengers, map);
 
+            for (VehicleAgent vehicle : vehicles) {
+                registerVehicle(getContainerController(), vehicle);
+            }
+
             for (PassengerAgent passenger : passengers) {
                 if (passenger.getVehicle() == null) {
                     registerPassenger(getContainerController(), passenger);
                 }
             }
 
-            for (VehicleAgent vehicle : vehicles) {
-                registerVehicle(getContainerController(), vehicle);
-            }
-
 //            view = new CarpoolView(map);
 //            view.drawPassengers(passengers);
         } catch (Exception e) {
             System.out.println("Error: " + e);
+            e.printStackTrace(System.out);
             System.exit(1); // ???
         }
     }
@@ -101,7 +102,7 @@ public class CarpoolAgent extends Agent {
         for (int i = 0; i < n; ++i) {
             int r = rnd.nextInt(passengers.size());
             while (pickedDrivers.contains(r)) {
-                r = rnd.nextInt();
+                r = rnd.nextInt(passengers.size());
             }
             pickedDrivers.add(r);
             Passenger driver = passengers.get(r);

@@ -12,7 +12,7 @@ public class MapModel {
         public final int id;
 
         private static int next_id = 0;
-        private static HashMap<Integer, Node> nodes;
+        private static HashMap<Integer, Node> nodes = new HashMap<>();
 
         public static Node getNodeByID(int id) {
             return nodes.get(id);

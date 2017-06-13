@@ -101,7 +101,7 @@ public class VehicleAgent extends Agent implements Vehicle {
 
             MapModel.Route route = map.getRoute(driverIntention.from, driverIntention.to);
 
-            this.currentPlan = new Plan(route, destinations, 0);
+            this.currentPlan = new Plan(route, destinations, route.getLength());
             this.newPlan = null;
             this.map = map;
         }
@@ -111,13 +111,13 @@ public class VehicleAgent extends Agent implements Vehicle {
             JSONObject content = new JSONObject(cfp.getContent());
             MapModel.Node from = MapModel.Node.getNodeByID(content.getInt("from"));
             MapModel.Node to = MapModel.Node.getNodeByID(content.getInt("to"));
-            int pricePerKm = content.getInt("price");
+            double pricePerKm = content.getDouble("price");
             AID sender = cfp.getSender();
 
             System.out.printf(
                     "Vehicle %s receive cfp from %s: from=%d; to=%d; $/km=%f\n",
-                    this.getAgent().getAID().toString(),
-                    sender.toString(),
+                    getAgent().getLocalName(),
+                    sender.getLocalName(),
                     from.id, to.id, pricePerKm
             );
 
@@ -144,15 +144,15 @@ public class VehicleAgent extends Agent implements Vehicle {
 
             System.out.printf(
                     "Vehicle %s builds a route: %s; payment=%f\n",
-                    this.getAgent().getAID().toString(),
+                    getAgent().getLocalName(),
                     vehicleRoute.toString(),
                     totalPayment
             );
 
             System.out.printf(
                     "Vehicle %s - route for %s: %s; payment=%f\n",
-                    this.getAgent().getAID().toString(),
-                    sender.toString(),
+                    getAgent().getLocalName(),
+                    sender.getLocalName(),
                     vehicleRoute.toString(),
                     passengerPayment
             );
@@ -160,8 +160,8 @@ public class VehicleAgent extends Agent implements Vehicle {
             if (newPlan.getCost() > currentPlan.getCost()) {
                 System.out.println(String.format(
                         "Vehicle %s - proposes route for %s",
-                        this.getAgent().getAID().toString(),
-                        sender.toString()
+                        getAgent().getLocalName(),
+                        sender.getLocalName()
                 ));
 
                 ACLMessage propose = new ACLMessage(ACLMessage.PROPOSE);
@@ -195,8 +195,8 @@ public class VehicleAgent extends Agent implements Vehicle {
         ) {
             System.out.println(String.format(
                     "Vehicle %s - passenger %s accepts proposal",
-                    this.getAgent().getAID().toString(),
-                    accept.getSender().toString()
+                    getAgent().getLocalName(),
+                    accept.getSender().getLocalName()
             ));
 
             currentPlan = newPlan;

@@ -58,10 +58,12 @@ public class PassengerAgent extends Agent implements Passenger {
 
             ArrayList<AID> vehicles = new ArrayList<>();
             DFAgentDescription template = new DFAgentDescription();
-            template.addServices(CarpoolAgent.PASSENGER_SERVICE);
-            for (DFAgentDescription description: DFService.search(this, template)) {
+            template.addServices(CarpoolAgent.VEHICLE_SERVICE);
+            DFAgentDescription[] descriptions = DFService.search(this, template);
+            for (DFAgentDescription description: descriptions) {
                 vehicles.add(description.getName());
             }
+
             addBehaviour(new InitatorBehavior(this, vehicles));
         } catch (Exception e) {
             System.out.println("Error: " + e);
@@ -81,10 +83,12 @@ public class PassengerAgent extends Agent implements Passenger {
         private static ACLMessage createCFP(PassengerAgent sender)  {
             ACLMessage cfp = new ACLMessage(ACLMessage.CFP);
             Passenger.Intention intention = sender.getIntention();
+            cfp.setProtocol(FIPANames.InteractionProtocol.FIPA_CONTRACT_NET);
             cfp.setLanguage("json");
             cfp.setContent(new JSONObject()
                 .put("from", intention.from)
                 .put("to", intention.to)
+                .put("price", 1.0)
                 .toString()
             );
             return cfp;
@@ -92,6 +96,11 @@ public class PassengerAgent extends Agent implements Passenger {
 
         @Override
         protected Vector<ACLMessage> prepareCfps(ACLMessage cfp) {
+            System.out.printf(
+                    "%s prepares cfps ...",
+                    this.getAgent().getAID().getLocalName()
+            );
+
             Vector<ACLMessage> cfps = new Vector<>();
             cfps.add((ACLMessage) cfp.clone());
             for (AID vehicle: vehicles) {
