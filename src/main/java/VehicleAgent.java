@@ -40,11 +40,14 @@ public class VehicleAgent extends Agent implements Vehicle {
 
     @Override
     public String toString() {
-        return "Driver" + driver.getID();
+        return "Vehicle" + driver.getID();
     }
 
     protected void setup() {
-        System.out.println("Starting Vehicle Agent " + getLocalName());
+        System.out.printf(
+                "Starting Vehicle Agent %s\n",
+                getLocalName()
+        );
 
         addBehaviour(new ResponderBehavior(this, map));
     }
@@ -96,12 +99,16 @@ public class VehicleAgent extends Agent implements Vehicle {
             driverIntention = agent.driver.getIntention();
 
             Set<Destination> destinations = new HashSet<>();
-            destinations.add(new Destination(agent.getAID(), Destination.Tag.SOURCE, driverIntention.from));
-            destinations.add(new Destination(agent.getAID(), Destination.Tag.SINK, driverIntention.to));
 
             MapModel.Route route = map.getRoute(driverIntention.from, driverIntention.to);
 
-            this.currentPlan = new Plan(route, destinations, route.getLength());
+            System.out.printf(
+                    "Vehicle %s initial route: %s\n",
+                    getAgent().getLocalName(),
+                    route.toString()
+            );
+
+            this.currentPlan = new Plan(route, destinations, 0);
             this.newPlan = null;
             this.map = map;
         }
@@ -128,7 +135,7 @@ public class VehicleAgent extends Agent implements Vehicle {
             Map<AID, MapModel.Route> routes = new HashMap<>();
             for (Destination dst: newDestinations) {
                 if (dst.tag == Destination.Tag.SOURCE) {
-                    routes.put(dst.aid, map.emptyRoute());
+                    routes.put(dst.aid, map.initRoute(dst.node));
                 }
             }
 
@@ -138,22 +145,28 @@ public class VehicleAgent extends Agent implements Vehicle {
                     routes
             );
 
-            double passengerPayment = pricePerKm * routes.get(sender).getLength();
+            MapModel.Route passengerRoute = routes.get(sender);
+            double passengerPayment = pricePerKm *
+                    Math.max(
+                        Math.abs(currentPlan.route.getLength() - vehicleRoute.getLength()),
+                        passengerRoute.getLength()
+                    );
             double totalPayment = currentPlan.payment + passengerPayment;
             Plan newPlan = new Plan(vehicleRoute, newDestinations, totalPayment);
 
             System.out.printf(
-                    "Vehicle %s builds a route: %s; payment=%f\n",
+                    "Vehicle %s builds a route: %s; payment=%f; $/km=%f\n",
                     getAgent().getLocalName(),
                     vehicleRoute.toString(),
-                    totalPayment
+                    totalPayment,
+                    newPlan.getCost()
             );
 
             System.out.printf(
                     "Vehicle %s - route for %s: %s; payment=%f\n",
                     getAgent().getLocalName(),
                     sender.getLocalName(),
-                    vehicleRoute.toString(),
+                    passengerRoute.toString(),
                     passengerPayment
             );
 
@@ -179,8 +192,8 @@ public class VehicleAgent extends Agent implements Vehicle {
             } else {
                 System.out.println(String.format(
                         "Vehicle %s - refuses proposal from %s",
-                        this.getAgent().getAID().toString(),
-                        sender.toString()
+                        getAgent().getLocalName(),
+                        sender.getLocalName()
                 ));
 
                 ACLMessage refuse = new ACLMessage(ACLMessage.REFUSE);
@@ -215,7 +228,7 @@ public class VehicleAgent extends Agent implements Vehicle {
             Set<AID> onBoard = new HashSet<>();
 
             MapModel.Node curr = driverIntention.from;
-            MapModel.Route vehicleRoute = map.emptyRoute();
+            MapModel.Route vehicleRoute = map.initRoute(curr);
 
             while (!destinations.isEmpty()) {
                 MapModel.Route minRoute = map.INFINITE_ROUTE;
@@ -248,6 +261,12 @@ public class VehicleAgent extends Agent implements Vehicle {
 
                 curr = nextDestination.node;
             }
+
+            MapModel.Route lastRoute = map.getRoute(curr, driverIntention.to);
+            for (AID aid : onBoard) {
+                routes.get(aid).join(lastRoute);
+            }
+            vehicleRoute.join(lastRoute);
 
             return vehicleRoute;
         }

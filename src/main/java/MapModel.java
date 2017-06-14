@@ -1,4 +1,6 @@
 import java.util.*;
+import java.util.stream.Collectors;
+
 import org.jgrapht.*;
 import org.jgrapht.alg.shortestpath.*;
 import org.jgrapht.graph.*;
@@ -32,23 +34,25 @@ public class MapModel {
     public static class Edge { }
 
     public class Route {
-        private List<Edge> path;
+        private List<Node> path;
         private double length;
-
-        public Route(List<Edge> path) {
-            this(path, path.size());
-        }
-
-        List<Edge> getPath() {
-            return path;
-        }
 
         public double getLength() {
             return length;
         }
 
+        public Node getFirst() {
+            return path.get(0);
+        }
+
+        public Node getLast() {
+            return path.get(path.size() - 1);
+        }
+
         public void join(Route route) {
-            path.addAll(route.path);
+            assert getLast().id == route.getFirst().id;
+
+            path.addAll(route.path.subList(1, route.path.size()));
             length += route.length;
         }
 
@@ -60,17 +64,23 @@ public class MapModel {
             if (path.isEmpty()) {
                 return "";
             }
-            StringBuilder builder = new StringBuilder();
-            for (Edge edge: path) {
-                builder.append(MapModel.this.graph.getEdgeSource(edge)).append(" -> ");
-            }
-            int lastIdx = path.size() - 1;
-            builder.append(MapModel.this.graph.getEdgeSource(path.get(lastIdx)));
-            return builder.toString();
+
+            return String.join(" -> ",
+                    path.stream().map(Node::toString).collect(Collectors.toList()));
         }
 
-        private Route(List<Edge> path, double length) {
-            this.path = path;
+        private Route(Node start) {
+            this.path = new ArrayList<>();
+            this.path.add(start);
+            this.length = 0;
+        }
+
+        private Route(GraphPath<Node, Edge> path) {
+            this(path, path.getLength());
+        }
+
+        private Route(GraphPath<Node, Edge> path, double length) {
+            this.path = (path == null) ? null : path.getVertexList();
             this.length = length;
         }
     }
@@ -105,13 +115,17 @@ public class MapModel {
 
     public Route getRoute(Node source, Node sink) {
         GraphPath<Node, Edge> path = dijkstra.getPath(source, sink);
-        return new Route(path.getEdgeList());
+        return new Route(path);
     }
 
     public final Route INFINITE_ROUTE = new Route(null, Double.MAX_VALUE);
 
+    public Route initRoute(Node start) {
+        return new Route(start);
+    }
+
     public Route emptyRoute() {
-        return new Route(new ArrayList<>());
+        return new Route(new GraphWalk<Node, Edge>(graph, new ArrayList<>(), 0));
     }
 
     private MapModel() {

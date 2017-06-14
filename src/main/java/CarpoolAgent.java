@@ -47,8 +47,8 @@ public class CarpoolAgent extends Agent {
                 }
             }
 
-//            view = new CarpoolView(map);
-//            view.drawPassengers(passengers);
+            view = new CarpoolView(map);
+            view.drawPassengers(passengers);
         } catch (Exception e) {
             System.out.println("Error: " + e);
             e.printStackTrace(System.out);

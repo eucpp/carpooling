@@ -97,8 +97,8 @@ public class PassengerAgent extends Agent implements Passenger {
         @Override
         protected Vector<ACLMessage> prepareCfps(ACLMessage cfp) {
             System.out.printf(
-                    "%s prepares cfps ...",
-                    this.getAgent().getAID().getLocalName()
+                    "%s prepares cfps ...\n",
+                    getAgent().getLocalName()
             );
 
             Vector<ACLMessage> cfps = new Vector<>();
@@ -125,16 +125,18 @@ public class PassengerAgent extends Agent implements Passenger {
             for (Object obj : responses) {
                 ACLMessage rsp = (ACLMessage) obj;
 
-                System.out.printf(
-                        "Passenger %s receives proposal: %s\n",
-                        this.getAgent().getAID().toString(),
-                        rsp
-                );
-
                 if (rsp.getPerformative() == ACLMessage.PROPOSE) {
                     JSONObject content = new JSONObject(rsp.getContent());
-                    Offer offer = new Offer(rsp.getSender(), content.getDouble("payment"));
-                    offers.add(offer);
+                    AID sender = rsp.getSender();
+                    double payment = content.getDouble("payment");
+                    offers.add(new Offer(sender, payment));
+
+                    System.out.printf(
+                            "Passenger %s receives proposal from %s with payment=%f\n",
+                            getAgent().getLocalName(),
+                            sender.getLocalName(),
+                            payment
+                    );
                 }
             }
             if (offers.isEmpty()) {
@@ -144,8 +146,8 @@ public class PassengerAgent extends Agent implements Passenger {
 
             System.out.printf(
                     "Passenger %s have chosen proposal from vehicle %s\n",
-                    this.getAgent().getAID().toString(),
-                    offers.get(0).aid.toString()
+                    getAgent().getLocalName(),
+                    offers.get(0).aid.getLocalName()
             );
 
             ACLMessage acceptMsg = new ACLMessage(ACLMessage.ACCEPT_PROPOSAL);
