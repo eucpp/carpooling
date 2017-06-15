@@ -33,12 +33,18 @@ public class MapModel {
 
     public static class Edge { }
 
+    private static final double PRICE_PER_KM = 1.0;
+
     public class Route {
         private List<Node> path;
         private double length;
 
         public double getLength() {
             return length;
+        }
+
+        public double getCost() {
+            return PRICE_PER_KM * getLength();
         }
 
         public Node getFirst() {

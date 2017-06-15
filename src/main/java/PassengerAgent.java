@@ -88,7 +88,6 @@ public class PassengerAgent extends Agent implements Passenger {
             cfp.setContent(new JSONObject()
                 .put("from", intention.from)
                 .put("to", intention.to)
-                .put("price", 1.0)
                 .toString()
             );
             return cfp;

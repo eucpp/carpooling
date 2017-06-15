@@ -79,6 +79,10 @@ public class VehicleAgent extends Agent implements Vehicle {
             this.payment = payment;
         }
 
+        public double getIncome() {
+            return payment - route.getCost();
+        }
+
         public double getCost() {
             if (route.getLength() == Double.MAX_VALUE) {
                 return 0;
@@ -118,14 +122,13 @@ public class VehicleAgent extends Agent implements Vehicle {
             JSONObject content = new JSONObject(cfp.getContent());
             MapModel.Node from = MapModel.Node.getNodeByID(content.getInt("from"));
             MapModel.Node to = MapModel.Node.getNodeByID(content.getInt("to"));
-            double pricePerKm = content.getDouble("price");
             AID sender = cfp.getSender();
 
             System.out.printf(
-                    "Vehicle %s receive cfp from %s: from=%d; to=%d; $/km=%f\n",
+                    "Vehicle %s receive cfp from %s: from=%d; to=%d\n",
                     getAgent().getLocalName(),
                     sender.getLocalName(),
-                    from.id, to.id, pricePerKm
+                    from.id, to.id
             );
 
             HashSet<Destination> newDestinations = new HashSet<>(currentPlan.destinations);
@@ -146,20 +149,18 @@ public class VehicleAgent extends Agent implements Vehicle {
             );
 
             MapModel.Route passengerRoute = routes.get(sender);
-            double passengerPayment = pricePerKm *
-                    Math.max(
-                        Math.abs(currentPlan.route.getLength() - vehicleRoute.getLength()),
-                        passengerRoute.getLength()
-                    );
+            double passengerPayment = Math.max(
+                    Math.abs(currentPlan.route.getCost() - vehicleRoute.getCost()),
+                    passengerRoute.getCost()
+            );
             double totalPayment = currentPlan.payment + passengerPayment;
             Plan newPlan = new Plan(vehicleRoute, newDestinations, totalPayment);
 
             System.out.printf(
-                    "Vehicle %s builds a route: %s; payment=%f; $/km=%f\n",
+                    "Vehicle %s builds a route: %s; income=%f;\n",
                     getAgent().getLocalName(),
                     vehicleRoute.toString(),
-                    totalPayment,
-                    newPlan.getCost()
+                    newPlan.getIncome()
             );
 
             System.out.printf(
@@ -170,7 +171,7 @@ public class VehicleAgent extends Agent implements Vehicle {
                     passengerPayment
             );
 
-            if (newPlan.getCost() > currentPlan.getCost()) {
+            if (newPlan.getIncome() >= currentPlan.getIncome()) {
                 System.out.println(String.format(
                         "Vehicle %s - proposes route for %s",
                         getAgent().getLocalName(),
@@ -253,7 +254,7 @@ public class VehicleAgent extends Agent implements Vehicle {
                 vehicleRoute.join(minRoute);
 
                 if (nextDestination.tag == Destination.Tag.SOURCE) {
-                    routes.put(nextDestination.aid, map.emptyRoute());
+                    routes.put(nextDestination.aid, map.initRoute(nextDestination.node));
                     onBoard.add(nextDestination.aid);
                 } else if (nextDestination.tag == Destination.Tag.SINK) {
                     onBoard.remove(nextDestination.aid);
