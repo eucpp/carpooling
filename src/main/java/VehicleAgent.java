@@ -1,6 +1,9 @@
+import java.io.SequenceInputStream;
 import java.util.*;
 
+import jade.core.behaviours.SequentialBehaviour;
 import jade.domain.FIPANames;
+import jade.proto.ProposeResponder;
 import org.json.*;
 
 import jade.core.*;
@@ -49,7 +52,10 @@ public class VehicleAgent extends Agent implements Vehicle {
                 getLocalName()
         );
 
-        addBehaviour(new ResponderBehavior(this, map));
+        SequentialBehaviour behaviour = new SequentialBehaviour(this);
+        behaviour.addSubBehaviour(new NegotiationWaitingBehavior(this));
+        behaviour.addSubBehaviour(new NegotiationBehavior(this, map));
+        addBehaviour(behaviour);
     }
 
     private static class Destination {
@@ -68,36 +74,51 @@ public class VehicleAgent extends Agent implements Vehicle {
         }
     }
 
-    private static class Plan {
-        private final MapModel.Route route;
-        private final Set<Destination> destinations;
-        private final double payment;
+    private static class NegotiationWaitingBehavior extends ProposeResponder {
 
-        public Plan(MapModel.Route route, Set<Destination> destinations, double payment) {
-            this.route = route;
-            this.destinations = destinations;
-            this.payment = payment;
+        NegotiationWaitingBehavior(VehicleAgent vehicle) {
+            super(vehicle, createMessageTemplate(FIPANames.InteractionProtocol.FIPA_PROPOSE));
         }
 
-        public double getIncome() {
-            return payment - route.getCost();
-        }
-
-        public double getCost() {
-            if (route.getLength() == Double.MAX_VALUE) {
-                return 0;
-            }
-            return payment / route.getLength();
+        @Override
+        protected ACLMessage prepareResponse(ACLMessage propose) {
+            ACLMessage response = new ACLMessage(ACLMessage.ACCEPT_PROPOSAL);
+            response.addReceiver(propose.getSender());
+            return response;
         }
     }
 
-    private static class ResponderBehavior extends ContractNetResponder {
+    private static class NegotiationBehavior extends ContractNetResponder {
+
+        private static class Plan {
+            private final MapModel.Route route;
+            private final Set<Destination> destinations;
+            private final double payment;
+
+            public Plan(MapModel.Route route, Set<Destination> destinations, double payment) {
+                this.route = route;
+                this.destinations = destinations;
+                this.payment = payment;
+            }
+
+            public double getIncome() {
+                return payment - route.getCost();
+            }
+
+            public double getCost() {
+                if (route.getLength() == Double.MAX_VALUE) {
+                    return 0;
+                }
+                return payment / route.getLength();
+            }
+        }
+
         private Plan currentPlan;
         private Plan newPlan;
         private Passenger.Intention driverIntention;
         private MapModel map;
 
-        ResponderBehavior(VehicleAgent agent, MapModel map) {
+        NegotiationBehavior(VehicleAgent agent, MapModel map) {
             super(agent, createMessageTemplate(FIPANames.InteractionProtocol.FIPA_CONTRACT_NET));
 
             driverIntention = agent.driver.getIntention();
@@ -183,7 +204,6 @@ public class VehicleAgent extends Agent implements Vehicle {
                 propose.setLanguage("json");
                 propose.setContent(new JSONObject()
                         .put("payment", passengerPayment)
-//                        .put("route", new JSONArray(routes.get(sender)))
                         .toString()
                 );
 
