@@ -205,11 +205,11 @@ public class DriverAgent extends Agent implements Driver {
         protected ACLMessage handleAcceptProposal(
                 ACLMessage cfp, ACLMessage propose, ACLMessage accept
         ) {
-            System.out.println(String.format(
-                    "%s - accepts proposal from %s",
+            System.out.printf(
+                    "%s receives accept from %s\n",
                     getAgent().getLocalName(),
                     accept.getSender().getLocalName()
-            ));
+            );
 
             DriverAgent agent = (DriverAgent) getAgent();
             agent.currentPlan = agent.newPlan;
@@ -224,11 +224,11 @@ public class DriverAgent extends Agent implements Driver {
         protected void handleRejectProposal(
                 ACLMessage cfp, ACLMessage propose, ACLMessage accept
         ) {
-            System.out.println(String.format(
-                    "%s rejects proposal from %s",
+            System.out.printf(
+                    "%s receives reject from %s\n",
                     getAgent().getLocalName(),
                     accept.getSender().getLocalName()
-            ));
+            );
 
             DriverAgent agent = (DriverAgent) getAgent();
             agent.newPlan = null;

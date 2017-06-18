@@ -32,10 +32,10 @@ public class CarpoolAgent extends Agent {
 
     protected void setup() {
         try {
-            map = MapModel.generate(8);
+            map = MapModel.generate(20);
 
-            passengers = generatePassengers(1, map);
-            vehicles = generateVehicles(2, map);
+            passengers = generatePassengers(8, map);
+            vehicles = generateVehicles(4, map);
 
             for (DriverAgent vehicle : vehicles) {
                 registerVehicle(getContainerController(), vehicle);

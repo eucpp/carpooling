@@ -57,6 +57,7 @@ public class PassengerAgent extends Agent implements Passenger {
             ACLMessage cfp = new ACLMessage(ACLMessage.CFP);
             MapModel.Intention intention = sender.getIntention();
             cfp.setProtocol(FIPANames.InteractionProtocol.FIPA_CONTRACT_NET);
+//            cfp.setConversationId(sender.getLocalName());
             cfp.setLanguage("json");
             cfp.setContent(new JSONObject()
                 .put("from", intention.from)
@@ -90,11 +91,11 @@ public class PassengerAgent extends Agent implements Passenger {
         }
 
         private static class Offer {
-            public final AID aid;
+            public final ACLMessage msg;
             public final double payment;
 
-            Offer(AID aid, double payment) {
-                this.aid = aid;
+            Offer(ACLMessage msg, double payment) {
+                this.msg = msg;
                 this.payment = payment;
             }
         }
@@ -110,7 +111,7 @@ public class PassengerAgent extends Agent implements Passenger {
                     JSONObject content = new JSONObject(rsp.getContent());
                     AID sender = rsp.getSender();
                     double payment = content.getDouble("payment");
-                    offers.add(new Offer(sender, payment));
+                    offers.add(new Offer(rsp, payment));
 
                     System.out.printf(
                             "%s receives proposal from %s with payment=%f\n",
@@ -140,19 +141,22 @@ public class PassengerAgent extends Agent implements Passenger {
 
             offers.sort((Offer a, Offer b) -> Double.compare(a.payment, b.payment));
 
+            ACLMessage chosen = offers.get(0).msg;
+
             System.out.printf(
                     "%s have chosen proposal from %s\n",
                     getAgent().getLocalName(),
-                    offers.get(0).aid.getLocalName()
+                    chosen.getSender().getLocalName()
             );
 
-            ACLMessage acceptMsg = new ACLMessage(ACLMessage.ACCEPT_PROPOSAL);
-            acceptMsg.addReceiver(offers.get(0).aid);
+            ACLMessage acceptMsg = chosen.createReply();
+            acceptMsg.setPerformative(ACLMessage.ACCEPT_PROPOSAL);
             acceptances.add(acceptMsg);
 
             for (int i = 1; i < offers.size(); ++i) {
-                ACLMessage rejectMsg = new ACLMessage(ACLMessage.REJECT_PROPOSAL);
-                acceptMsg.addReceiver(offers.get(i).aid);
+                ACLMessage msg = offers.get(i).msg;
+                ACLMessage rejectMsg = msg.createReply();
+                rejectMsg.setPerformative(ACLMessage.REJECT_PROPOSAL);
                 acceptances.add(rejectMsg);
             }
         }
