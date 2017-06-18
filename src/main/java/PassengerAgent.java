@@ -59,81 +59,13 @@ public class PassengerAgent extends Agent implements Passenger {
     protected void setup() {
         System.out.println("Starting Passenger Agent " + getLocalName());
 
-        SequentialBehaviour behaviour = new SequentialBehaviour(this);
-        behaviour.addSubBehaviour(new NegotiationInitatorBehavior(this));
-        behaviour.addSubBehaviour(new NegotiationBehavior(this));
-        addBehaviour(behaviour);
-    }
-
-    private static class NegotiationInitatorBehavior extends ProposeInitiator {
-
-        private PassengerAgent passenger;
-
-        public NegotiationInitatorBehavior(PassengerAgent passenger) {
-            super(passenger, createCFP(passenger));
-            this.passenger = passenger;
-        }
-
-        private static ACLMessage createCFP(PassengerAgent sender)  {
-            ACLMessage cfp = new ACLMessage(ACLMessage.PROPOSE);
-            cfp.setProtocol(FIPANames.InteractionProtocol.FIPA_PROPOSE);
-            cfp.setLanguage("json");
-            return cfp;
-        }
-
-        @Override
-        protected Vector<ACLMessage> prepareInitiations(ACLMessage propose) {
-            System.out.printf(
-                    "%s initiates negotiations ...\n",
-                    getAgent().getLocalName()
-            );
-
-            try {
-                passenger.providers = new HashSet<>();
-                DFAgentDescription template = new DFAgentDescription();
-                template.addServices(CarpoolAgent.VEHICLE_SERVICE);
-                DFAgentDescription[] descriptions = DFService.search(getAgent(), template);
-                for (DFAgentDescription description: descriptions) {
-                    passenger.providers.add(description.getName());
-                }
-            } catch (Exception e) {
-                System.out.println("Error: " + e);
-                System.exit(1);
-            }
-
-            Vector<ACLMessage> cfps = new Vector<>();
-            cfps.add((ACLMessage) propose.clone());
-            for (AID vehicle: passenger.providers) {
-                cfps.get(0).addReceiver(vehicle);
-            }
-            return cfps;
-        }
-
-        @Override
-        protected void handleAllResponses(Vector responses) {
-            for (Object obj : responses) {
-                ACLMessage rsp = (ACLMessage) obj;
-                AID sender = rsp.getSender();
-                if (rsp.getPerformative() == ACLMessage.ACCEPT_PROPOSAL) {
-                    System.out.printf(
-                            "Passenger %s receives acceptance of negotiation from %s\n",
-                            getAgent().getLocalName(),
-                            sender.getLocalName()
-                    );
-                } else {
-                    passenger.providers.remove(sender);
-                }
-            }
-        }
+        addBehaviour(new NegotiationBehavior(this));
     }
 
     private static class NegotiationBehavior extends ContractNetInitiator {
 
-        PassengerAgent passenger;
-
         public NegotiationBehavior(PassengerAgent passenger) {
             super(passenger, createCFP(passenger));
-            this.passenger = passenger;
         }
 
         private static ACLMessage createCFP(PassengerAgent sender)  {
@@ -158,8 +90,16 @@ public class PassengerAgent extends Agent implements Passenger {
 
             Vector<ACLMessage> cfps = new Vector<>();
             cfps.add((ACLMessage) cfp.clone());
-            for (AID vehicle: passenger.providers) {
-                cfps.get(0).addReceiver(vehicle);
+            try {
+                DFAgentDescription template = new DFAgentDescription();
+                template.addServices(CarpoolAgent.VEHICLE_SERVICE);
+                DFAgentDescription[] descriptions = DFService.search(getAgent(), template);
+                for (DFAgentDescription description: descriptions) {
+                    cfps.get(0).addReceiver(description.getName());
+                }
+            } catch (Exception e) {
+                System.out.println("Error: " + e);
+                System.exit(1);
             }
             return cfps;
         }
@@ -177,6 +117,7 @@ public class PassengerAgent extends Agent implements Passenger {
         @Override
         protected void handleAllResponses(Vector responses, Vector acceptances) {
             ArrayList<Offer> offers = new ArrayList<>();
+            ArrayList<AID> busy = new ArrayList<>();
             for (Object obj : responses) {
                 ACLMessage rsp = (ACLMessage) obj;
 
@@ -192,11 +133,26 @@ public class PassengerAgent extends Agent implements Passenger {
                             sender.getLocalName(),
                             payment
                     );
+                } else if (rsp.getPerformative() == ACLMessage.REFUSE) {
+                    JSONObject content = new JSONObject(rsp.getContent());
+                    if (content.getString("reason").equals("busy")) {
+                        busy.add(rsp.getSender());
+                    }
                 }
             }
             if (offers.isEmpty()) {
-                return;
+                if (!busy.isEmpty()) {
+                    ACLMessage cfp = createCFP((PassengerAgent) getAgent());
+                    for (AID receiver: busy) {
+                        cfp.addReceiver(receiver);
+                    }
+                    Vector vec = new Vector();
+                    vec.add(cfp);
+                    newIteration(vec);
+                    return;
+                }
             }
+
             offers.sort((Offer a, Offer b) -> Double.compare(a.payment, b.payment));
 
             System.out.printf(

@@ -14,26 +14,56 @@ import jade.proto.ContractNetResponder;
 
 public class VehicleAgent extends Agent implements Vehicle {
 
+    private static class Plan {
+        private final MapModel.Route route;
+        private final Set<Destination> destinations;
+        private final double payment;
+
+        public Plan(MapModel.Route route, Set<Destination> destinations, double payment) {
+            this.route = route;
+            this.destinations = destinations;
+            this.payment = payment;
+        }
+
+        public double getIncome() {
+            return payment - route.getCost();
+        }
+
+        public double getCost() {
+            if (route.getLength() == Double.MAX_VALUE) {
+                return 0;
+            }
+            return payment / route.getLength();
+        }
+    }
+
     private final Passenger driver;
-    private ArrayList<Passenger> passengers;
     private MapModel map;
+    private Plan currentPlan;
+    private Plan newPlan;
+    boolean inNegotiation;
 
     private static final int CAPACITY = 3;
 
     public VehicleAgent(Passenger driver, MapModel map) {
+        Set<Destination> destinations = new HashSet<>();
+        MapModel.Route route = map.getRoute(driver.getIntention().from, driver.getIntention().to);
+        this.currentPlan = new Plan(route, destinations, 0);
+        this.newPlan = null;
         this.driver = driver;
-        this.passengers = new ArrayList<>();
         this.map = map;
+        this.inNegotiation = false;
+
+        System.out.printf(
+                "Vehicle %s initial route: %s\n",
+                getLocalName(),
+                route.toString()
+        );
     }
 
     @Override
     public Passenger getDriver() {
         return this.driver;
-    }
-
-    @Override
-    public ArrayList<Passenger> getPassengers() {
-        return this.passengers;
     }
 
     @Override
@@ -52,10 +82,7 @@ public class VehicleAgent extends Agent implements Vehicle {
                 getLocalName()
         );
 
-        SequentialBehaviour behaviour = new SequentialBehaviour(this);
-        behaviour.addSubBehaviour(new NegotiationWaitingBehavior(this));
-        behaviour.addSubBehaviour(new NegotiationBehavior(this, map));
-        addBehaviour(behaviour);
+        addBehaviour(new NegotiationBehavior(this));
     }
 
     private static class Destination {
@@ -74,76 +101,36 @@ public class VehicleAgent extends Agent implements Vehicle {
         }
     }
 
-    private static class NegotiationWaitingBehavior extends ProposeResponder {
-
-        NegotiationWaitingBehavior(VehicleAgent vehicle) {
-            super(vehicle, createMessageTemplate(FIPANames.InteractionProtocol.FIPA_PROPOSE));
-        }
-
-        @Override
-        protected ACLMessage prepareResponse(ACLMessage propose) {
-            ACLMessage response = new ACLMessage(ACLMessage.ACCEPT_PROPOSAL);
-            response.addReceiver(propose.getSender());
-            return response;
-        }
-    }
-
     private static class NegotiationBehavior extends ContractNetResponder {
 
-        private static class Plan {
-            private final MapModel.Route route;
-            private final Set<Destination> destinations;
-            private final double payment;
-
-            public Plan(MapModel.Route route, Set<Destination> destinations, double payment) {
-                this.route = route;
-                this.destinations = destinations;
-                this.payment = payment;
-            }
-
-            public double getIncome() {
-                return payment - route.getCost();
-            }
-
-            public double getCost() {
-                if (route.getLength() == Double.MAX_VALUE) {
-                    return 0;
-                }
-                return payment / route.getLength();
-            }
-        }
-
-        private Plan currentPlan;
-        private Plan newPlan;
-        private Passenger.Intention driverIntention;
-        private MapModel map;
-
-        NegotiationBehavior(VehicleAgent agent, MapModel map) {
+        NegotiationBehavior(VehicleAgent agent) {
             super(agent, createMessageTemplate(FIPANames.InteractionProtocol.FIPA_CONTRACT_NET));
-
-            driverIntention = agent.driver.getIntention();
-
-            Set<Destination> destinations = new HashSet<>();
-
-            MapModel.Route route = map.getRoute(driverIntention.from, driverIntention.to);
-
-            System.out.printf(
-                    "Vehicle %s initial route: %s\n",
-                    getAgent().getLocalName(),
-                    route.toString()
-            );
-
-            this.currentPlan = new Plan(route, destinations, 0);
-            this.newPlan = null;
-            this.map = map;
         }
 
         @Override
         protected ACLMessage handleCfp(ACLMessage cfp) {
+            AID sender = cfp.getSender();
+            VehicleAgent agent = (VehicleAgent) getAgent();
+
+            if (agent.newPlan != null) {
+                System.out.printf(
+                        "Vehicle %s receive cfp from %s but it is busy now\n",
+                        getAgent().getLocalName(),
+                        sender.getLocalName()
+                );
+
+                ACLMessage refuse = cfp.createReply();
+                refuse.setPerformative(ACLMessage.REFUSE);
+                refuse.setContent(new JSONObject()
+                        .put("reason", "busy")
+                        .toString()
+                );
+                return refuse;
+            }
+
             JSONObject content = new JSONObject(cfp.getContent());
             MapModel.Node from = MapModel.Node.getNodeByID(content.getInt("from"));
             MapModel.Node to = MapModel.Node.getNodeByID(content.getInt("to"));
-            AID sender = cfp.getSender();
 
             System.out.printf(
                     "Vehicle %s receive cfp from %s: from=%d; to=%d\n",
@@ -152,29 +139,29 @@ public class VehicleAgent extends Agent implements Vehicle {
                     from.id, to.id
             );
 
-            HashSet<Destination> newDestinations = new HashSet<>(currentPlan.destinations);
+            HashSet<Destination> newDestinations = new HashSet<>(agent.currentPlan.destinations);
             newDestinations.add(new Destination(sender, Destination.Tag.SOURCE, from));
             newDestinations.add(new Destination(sender, Destination.Tag.SINK, to));
 
             Map<AID, MapModel.Route> routes = new HashMap<>();
             for (Destination dst: newDestinations) {
                 if (dst.tag == Destination.Tag.SOURCE) {
-                    routes.put(dst.aid, map.initRoute(dst.node));
+                    routes.put(dst.aid, agent.map.initRoute(dst.node));
                 }
             }
 
             MapModel.Route vehicleRoute = computeRoute(
-                    driverIntention,
+                    agent.driver.getIntention(),
                     (Set<Destination>) newDestinations.clone(),
                     routes
             );
 
             MapModel.Route passengerRoute = routes.get(sender);
             double passengerPayment = Math.max(
-                    Math.abs(currentPlan.route.getCost() - vehicleRoute.getCost()),
+                    Math.abs(agent.currentPlan.route.getCost() - vehicleRoute.getCost()),
                     passengerRoute.getCost()
             );
-            double totalPayment = currentPlan.payment + passengerPayment;
+            double totalPayment = agent.currentPlan.payment + passengerPayment;
             Plan newPlan = new Plan(vehicleRoute, newDestinations, totalPayment);
 
             System.out.printf(
@@ -192,23 +179,20 @@ public class VehicleAgent extends Agent implements Vehicle {
                     passengerPayment
             );
 
-            if (newPlan.getIncome() >= currentPlan.getIncome()) {
+            if (newPlan.getIncome() >= agent.currentPlan.getIncome()) {
                 System.out.println(String.format(
                         "Vehicle %s - proposes route for %s",
                         getAgent().getLocalName(),
                         sender.getLocalName()
                 ));
 
-                ACLMessage propose = new ACLMessage(ACLMessage.PROPOSE);
-                propose.addReceiver(cfp.getSender());
-                propose.setLanguage("json");
+                ACLMessage propose = cfp.createReply();
+                propose.setPerformative(ACLMessage.PROPOSE);
                 propose.setContent(new JSONObject()
                         .put("payment", passengerPayment)
                         .toString()
                 );
-
-                this.newPlan = newPlan;
-
+                agent.newPlan = newPlan;
                 return propose;
             } else {
                 System.out.println(String.format(
@@ -217,14 +201,18 @@ public class VehicleAgent extends Agent implements Vehicle {
                         sender.getLocalName()
                 ));
 
-                ACLMessage refuse = new ACLMessage(ACLMessage.REFUSE);
-                refuse.addReceiver(cfp.getSender());
-                refuse.setLanguage("json");
+                ACLMessage refuse = cfp.createReply();
+                refuse.setPerformative(ACLMessage.REFUSE);
+                refuse.setContent(new JSONObject()
+                        .put("reason", "unprofitable")
+                        .toString()
+                );
                 return refuse;
             }
         }
 
-        @Override protected ACLMessage handleAcceptProposal(
+        @Override
+        protected ACLMessage handleAcceptProposal(
                 ACLMessage cfp, ACLMessage propose, ACLMessage accept
         ) {
             System.out.println(String.format(
@@ -233,12 +221,27 @@ public class VehicleAgent extends Agent implements Vehicle {
                     accept.getSender().getLocalName()
             ));
 
-            currentPlan = newPlan;
-            newPlan = null;
+            VehicleAgent agent = (VehicleAgent) getAgent();
+            agent.currentPlan = agent.newPlan;
+            agent.newPlan = null;
 
             ACLMessage inform = new ACLMessage(ACLMessage.INFORM);
             inform.addReceiver(accept.getSender());
             return inform;
+        }
+
+        @Override
+        protected void handleRejectProposal(
+                ACLMessage cfp, ACLMessage propose, ACLMessage accept
+        ) {
+            System.out.println(String.format(
+                    "Vehicle %s - passenger %s rejects proposal",
+                    getAgent().getLocalName(),
+                    accept.getSender().getLocalName()
+            ));
+
+            VehicleAgent agent = (VehicleAgent) getAgent();
+            agent.newPlan = null;
         }
 
         private MapModel.Route computeRoute(
@@ -248,17 +251,18 @@ public class VehicleAgent extends Agent implements Vehicle {
         ) {
             Set<AID> onBoard = new HashSet<>();
 
+            VehicleAgent agent = (VehicleAgent) getAgent();
             MapModel.Node curr = driverIntention.from;
-            MapModel.Route vehicleRoute = map.initRoute(curr);
+            MapModel.Route vehicleRoute = agent.map.initRoute(curr);
 
             while (!destinations.isEmpty()) {
-                MapModel.Route minRoute = map.INFINITE_ROUTE;
+                MapModel.Route minRoute = agent.map.INFINITE_ROUTE;
                 Destination nextDestination = null;
 
                 for (Destination destination : destinations) {
                     if ((destination.tag == Destination.Tag.SOURCE && onBoard.size() < CAPACITY) ||
                             (destination.tag == Destination.Tag.SINK && onBoard.contains(destination.aid))) {
-                        MapModel.Route route = map.getRoute(curr, destination.node);
+                        MapModel.Route route = agent.map.getRoute(curr, destination.node);
                         if (route.getLength() < minRoute.getLength()) {
                             minRoute = route;
                             nextDestination = destination;
@@ -274,7 +278,7 @@ public class VehicleAgent extends Agent implements Vehicle {
                 vehicleRoute.join(minRoute);
 
                 if (nextDestination.tag == Destination.Tag.SOURCE) {
-                    routes.put(nextDestination.aid, map.initRoute(nextDestination.node));
+                    routes.put(nextDestination.aid, agent.map.initRoute(nextDestination.node));
                     onBoard.add(nextDestination.aid);
                 } else if (nextDestination.tag == Destination.Tag.SINK) {
                     onBoard.remove(nextDestination.aid);
@@ -283,7 +287,7 @@ public class VehicleAgent extends Agent implements Vehicle {
                 curr = nextDestination.node;
             }
 
-            MapModel.Route lastRoute = map.getRoute(curr, driverIntention.to);
+            MapModel.Route lastRoute = agent.map.getRoute(curr, driverIntention.to);
             for (AID aid : onBoard) {
                 routes.get(aid).join(lastRoute);
             }
