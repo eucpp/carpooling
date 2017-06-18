@@ -28,23 +28,21 @@ public class CarpoolAgent extends Agent {
     private CarpoolView view;
 
     private ArrayList<PassengerAgent> passengers;
-    private ArrayList<VehicleAgent> vehicles;
+    private ArrayList<DriverAgent> vehicles;
 
     protected void setup() {
         try {
             map = MapModel.generate(8);
 
-            passengers = generatePassengers(3, map);
-            vehicles = generateVehicles(2, passengers, map);
+            passengers = generatePassengers(1, map);
+            vehicles = generateVehicles(2, map);
 
-            for (VehicleAgent vehicle : vehicles) {
+            for (DriverAgent vehicle : vehicles) {
                 registerVehicle(getContainerController(), vehicle);
             }
 
             for (PassengerAgent passenger : passengers) {
-                if (passenger.getVehicle() == null) {
-                    registerPassenger(getContainerController(), passenger);
-                }
+                registerPassenger(getContainerController(), passenger);
             }
 
             view = new CarpoolView(map);
@@ -68,7 +66,7 @@ public class CarpoolAgent extends Agent {
         DFService.register(agent, dfd);
     }
 
-    private static void registerVehicle(ContainerController container, VehicleAgent agent)
+    private static void registerVehicle(ContainerController container, DriverAgent agent)
             throws StaleProxyException, FIPAException {
         AgentController ac = container.acceptNewAgent(agent.toString(), agent);
         ac.start();
@@ -89,25 +87,23 @@ public class CarpoolAgent extends Agent {
             while (to == from) {
                 to = nodes.get(rnd.nextInt(nodes.size()));
             }
-            PassengerAgent passenger = new PassengerAgent(new PassengerAgent.Intention(from, to));
+            PassengerAgent passenger = new PassengerAgent(new MapModel.Intention(from, to));
             passengers.add(passenger);
         }
         return passengers;
     }
 
-    private static ArrayList<VehicleAgent> generateVehicles(int n, ArrayList<? extends Passenger> passengers, MapModel map) {
-        ArrayList<VehicleAgent> vehicles = new ArrayList<>(n);
-        Set<Integer> pickedDrivers = new HashSet<>();
+    private static ArrayList<DriverAgent> generateVehicles(int n, MapModel map) {
+        ArrayList<DriverAgent> vehicles = new ArrayList<>(n);
+        ArrayList<MapModel.Node> nodes = new ArrayList<>(map.getGraph().vertexSet());
         Random rnd = new Random();
         for (int i = 0; i < n; ++i) {
-            int r = rnd.nextInt(passengers.size());
-            while (pickedDrivers.contains(r)) {
-                r = rnd.nextInt(passengers.size());
+            MapModel.Node from = nodes.get(rnd.nextInt(nodes.size()));
+            MapModel.Node to = nodes.get(rnd.nextInt(nodes.size()));
+            while (to == from) {
+                to = nodes.get(rnd.nextInt(nodes.size()));
             }
-            pickedDrivers.add(r);
-            Passenger driver = passengers.get(r);
-            VehicleAgent vehicle = new VehicleAgent(driver, map);
-            driver.setVehicle(vehicle);
+            DriverAgent vehicle = new DriverAgent(new MapModel.Intention(from, to), map);
             vehicles.add(vehicle);
         }
         return vehicles;

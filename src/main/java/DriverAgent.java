@@ -1,9 +1,6 @@
-import java.io.SequenceInputStream;
 import java.util.*;
 
-import jade.core.behaviours.SequentialBehaviour;
 import jade.domain.FIPANames;
-import jade.proto.ProposeResponder;
 import org.json.*;
 
 import jade.core.*;
@@ -12,7 +9,7 @@ import jade.lang.acl.*;
 import jade.proto.ContractNetResponder;
 
 
-public class VehicleAgent extends Agent implements Vehicle {
+public class DriverAgent extends Agent implements Driver {
 
     private static class Plan {
         private final MapModel.Route route;
@@ -37,48 +34,42 @@ public class VehicleAgent extends Agent implements Vehicle {
         }
     }
 
-    private final Passenger driver;
+    private final int id;
     private MapModel map;
-    private Plan currentPlan;
     private Plan newPlan;
+    private Plan currentPlan;
+    private MapModel.Intention intention;
     boolean inNegotiation;
 
     private static final int CAPACITY = 3;
 
-    public VehicleAgent(Passenger driver, MapModel map) {
+    private static int next_id = 0;
+
+    public DriverAgent(MapModel.Intention intention, MapModel map) {
         Set<Destination> destinations = new HashSet<>();
-        MapModel.Route route = map.getRoute(driver.getIntention().from, driver.getIntention().to);
+        MapModel.Route route = map.getRoute(intention.from, intention.to);
+        this.id = next_id++;
         this.currentPlan = new Plan(route, destinations, 0);
         this.newPlan = null;
-        this.driver = driver;
+        this.intention = intention;
         this.map = map;
         this.inNegotiation = false;
 
         System.out.printf(
-                "Vehicle %s initial route: %s\n",
+                "%s initial route: %s\n",
                 getLocalName(),
                 route.toString()
         );
     }
 
     @Override
-    public Passenger getDriver() {
-        return this.driver;
-    }
-
-    @Override
-    public int getCapacity() {
-        return CAPACITY;
-    }
-
-    @Override
     public String toString() {
-        return "Vehicle" + driver.getID();
+        return "Driver" + Integer.toString(id);
     }
 
     protected void setup() {
         System.out.printf(
-                "Starting Vehicle Agent %s\n",
+                "Starting Agent %s\n",
                 getLocalName()
         );
 
@@ -103,18 +94,18 @@ public class VehicleAgent extends Agent implements Vehicle {
 
     private static class NegotiationBehavior extends ContractNetResponder {
 
-        NegotiationBehavior(VehicleAgent agent) {
+        NegotiationBehavior(DriverAgent agent) {
             super(agent, createMessageTemplate(FIPANames.InteractionProtocol.FIPA_CONTRACT_NET));
         }
 
         @Override
         protected ACLMessage handleCfp(ACLMessage cfp) {
             AID sender = cfp.getSender();
-            VehicleAgent agent = (VehicleAgent) getAgent();
+            DriverAgent agent = (DriverAgent) getAgent();
 
             if (agent.newPlan != null) {
                 System.out.printf(
-                        "Vehicle %s receive cfp from %s but it is busy now\n",
+                        "%s receive cfp from %s but it is busy now\n",
                         getAgent().getLocalName(),
                         sender.getLocalName()
                 );
@@ -133,7 +124,7 @@ public class VehicleAgent extends Agent implements Vehicle {
             MapModel.Node to = MapModel.Node.getNodeByID(content.getInt("to"));
 
             System.out.printf(
-                    "Vehicle %s receive cfp from %s: from=%d; to=%d\n",
+                    "%s receive cfp from %s: from=%d; to=%d\n",
                     getAgent().getLocalName(),
                     sender.getLocalName(),
                     from.id, to.id
@@ -151,7 +142,6 @@ public class VehicleAgent extends Agent implements Vehicle {
             }
 
             MapModel.Route vehicleRoute = computeRoute(
-                    agent.driver.getIntention(),
                     (Set<Destination>) newDestinations.clone(),
                     routes
             );
@@ -165,14 +155,14 @@ public class VehicleAgent extends Agent implements Vehicle {
             Plan newPlan = new Plan(vehicleRoute, newDestinations, totalPayment);
 
             System.out.printf(
-                    "Vehicle %s builds a route: %s; income=%f;\n",
+                    "%s builds a route: %s; income=%f;\n",
                     getAgent().getLocalName(),
                     vehicleRoute.toString(),
                     newPlan.getIncome()
             );
 
             System.out.printf(
-                    "Vehicle %s - route for %s: %s; payment=%f\n",
+                    "%s - route for %s: %s; payment=%f\n",
                     getAgent().getLocalName(),
                     sender.getLocalName(),
                     passengerRoute.toString(),
@@ -181,7 +171,7 @@ public class VehicleAgent extends Agent implements Vehicle {
 
             if (newPlan.getIncome() >= agent.currentPlan.getIncome()) {
                 System.out.println(String.format(
-                        "Vehicle %s - proposes route for %s",
+                        "%s - proposes route for %s",
                         getAgent().getLocalName(),
                         sender.getLocalName()
                 ));
@@ -196,7 +186,7 @@ public class VehicleAgent extends Agent implements Vehicle {
                 return propose;
             } else {
                 System.out.println(String.format(
-                        "Vehicle %s - refuses proposal from %s",
+                        "%s - refuses proposal from %s",
                         getAgent().getLocalName(),
                         sender.getLocalName()
                 ));
@@ -216,12 +206,12 @@ public class VehicleAgent extends Agent implements Vehicle {
                 ACLMessage cfp, ACLMessage propose, ACLMessage accept
         ) {
             System.out.println(String.format(
-                    "Vehicle %s - passenger %s accepts proposal",
+                    "%s - accepts proposal from %s",
                     getAgent().getLocalName(),
                     accept.getSender().getLocalName()
             ));
 
-            VehicleAgent agent = (VehicleAgent) getAgent();
+            DriverAgent agent = (DriverAgent) getAgent();
             agent.currentPlan = agent.newPlan;
             agent.newPlan = null;
 
@@ -235,24 +225,23 @@ public class VehicleAgent extends Agent implements Vehicle {
                 ACLMessage cfp, ACLMessage propose, ACLMessage accept
         ) {
             System.out.println(String.format(
-                    "Vehicle %s - passenger %s rejects proposal",
+                    "%s rejects proposal from %s",
                     getAgent().getLocalName(),
                     accept.getSender().getLocalName()
             ));
 
-            VehicleAgent agent = (VehicleAgent) getAgent();
+            DriverAgent agent = (DriverAgent) getAgent();
             agent.newPlan = null;
         }
 
         private MapModel.Route computeRoute(
-                Passenger.Intention driverIntention,
                 Set<Destination> destinations,
                 Map<AID, MapModel.Route> routes
         ) {
             Set<AID> onBoard = new HashSet<>();
 
-            VehicleAgent agent = (VehicleAgent) getAgent();
-            MapModel.Node curr = driverIntention.from;
+            DriverAgent agent = (DriverAgent) getAgent();
+            MapModel.Node curr = agent.intention.from;
             MapModel.Route vehicleRoute = agent.map.initRoute(curr);
 
             while (!destinations.isEmpty()) {
@@ -287,7 +276,7 @@ public class VehicleAgent extends Agent implements Vehicle {
                 curr = nextDestination.node;
             }
 
-            MapModel.Route lastRoute = agent.map.getRoute(curr, driverIntention.to);
+            MapModel.Route lastRoute = agent.map.getRoute(curr, agent.intention.to);
             for (AID aid : onBoard) {
                 routes.get(aid).join(lastRoute);
             }

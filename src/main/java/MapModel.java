@@ -33,6 +33,16 @@ public class MapModel {
 
     public static class Edge { }
 
+    public static class Intention {
+        public final MapModel.Node from;
+        public final MapModel.Node to;
+
+        public Intention(MapModel.Node from, MapModel.Node to) {
+            this.from = from;
+            this.to = to;
+        }
+    }
+
     private static final double PRICE_PER_KM = 1.0;
 
     public class Route {

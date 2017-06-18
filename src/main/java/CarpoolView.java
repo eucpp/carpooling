@@ -132,11 +132,11 @@ public class CarpoolView {
 
     public void drawPassengers(ArrayList<? extends Passenger> passengers) {
         for (Passenger passenger: passengers) {
-            PassengerAgent.Intention intention = passenger.getIntention();
+            MapModel.Intention intention = passenger.getIntention();
             GraphPath<MapModel.Node, MapModel.Edge> path =
                 DijkstraShortestPath.findPathBetween(map.getGraph(), intention.from, intention.to);
 
-            String nodeStyle = passenger.getVehicle() != null ? VEHICLE_NODE_STYLE : PASSENGER_NODE_STYLE;
+            String nodeStyle = PASSENGER_NODE_STYLE;
             nodeStyle += ";fillColor=" + COLORS[passenger.getID()];
 
             String edgeStyle = INTENTION_EDGE_STYLE;

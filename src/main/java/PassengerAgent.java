@@ -2,12 +2,9 @@ import java.util.*;
 import java.util.ArrayList;
 
 import jade.core.*;
-import jade.core.behaviours.Behaviour;
-import jade.core.behaviours.SequentialBehaviour;
 import jade.domain.*;
 import jade.domain.FIPAAgentManagement.*;
 
-import jade.proto.ProposeInitiator;
 import org.json.*;
 
 import jade.lang.acl.ACLMessage;
@@ -16,18 +13,16 @@ import jade.proto.ContractNetInitiator;
 public class PassengerAgent extends Agent implements Passenger {
 
     private final int id;
-    private final Passenger.Intention intention;
-    private Vehicle vehicle;
-    private Set<AID> providers;
+    private final MapModel.Intention intention;
 
     private static int next_id = 0;
 
-    public PassengerAgent(Passenger.Intention intention) {
+    public PassengerAgent(MapModel.Intention intention) {
         this.id = next_id++;
         this.intention = intention;
 
-        System.out.printf("Creating new passenger with id=%d that want to move from %s to %s\n",
-                this.id, intention.from.toString(), intention.to.toString());
+        System.out.printf("%s intention: from %s to %s\n",
+                getLocalName(), intention.from.toString(), intention.to.toString());
     }
 
     @Override
@@ -36,18 +31,8 @@ public class PassengerAgent extends Agent implements Passenger {
     }
 
     @Override
-    public Passenger.Intention getIntention() {
+    public MapModel.Intention getIntention() {
         return this.intention;
-    }
-
-    @Override
-    public Vehicle getVehicle() {
-        return this.vehicle;
-    }
-
-    @Override
-    public void setVehicle(Vehicle vehicle) {
-        this.vehicle = vehicle;
     }
 
     @Override
@@ -57,7 +42,7 @@ public class PassengerAgent extends Agent implements Passenger {
 
     @Override
     protected void setup() {
-        System.out.println("Starting Passenger Agent " + getLocalName());
+        System.out.println("Starting Agent " + getLocalName());
 
         addBehaviour(new NegotiationBehavior(this));
     }
@@ -70,7 +55,7 @@ public class PassengerAgent extends Agent implements Passenger {
 
         private static ACLMessage createCFP(PassengerAgent sender)  {
             ACLMessage cfp = new ACLMessage(ACLMessage.CFP);
-            Passenger.Intention intention = sender.getIntention();
+            MapModel.Intention intention = sender.getIntention();
             cfp.setProtocol(FIPANames.InteractionProtocol.FIPA_CONTRACT_NET);
             cfp.setLanguage("json");
             cfp.setContent(new JSONObject()
@@ -128,7 +113,7 @@ public class PassengerAgent extends Agent implements Passenger {
                     offers.add(new Offer(sender, payment));
 
                     System.out.printf(
-                            "Passenger %s receives proposal from %s with payment=%f\n",
+                            "%s receives proposal from %s with payment=%f\n",
                             getAgent().getLocalName(),
                             sender.getLocalName(),
                             payment
@@ -156,7 +141,7 @@ public class PassengerAgent extends Agent implements Passenger {
             offers.sort((Offer a, Offer b) -> Double.compare(a.payment, b.payment));
 
             System.out.printf(
-                    "Passenger %s have chosen proposal from vehicle %s\n",
+                    "%s have chosen proposal from %s\n",
                     getAgent().getLocalName(),
                     offers.get(0).aid.getLocalName()
             );
