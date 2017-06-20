@@ -44,6 +44,11 @@ public class PassengerAgent extends Agent implements Passenger {
     protected void setup() {
         System.out.println("Starting Agent " + getLocalName());
 
-        addBehaviour(new DriverSearchBehaviour(this, intention, (double __) -> true));
+        addBehaviour(
+                new DriverSearchBehaviour(
+                        this, intention, new DriverSearchBehaviour.AcceptDecisionMaker() {
+                        }
+                )
+        );
     }
 }

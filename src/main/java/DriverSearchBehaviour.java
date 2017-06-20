@@ -3,6 +3,7 @@ import jade.domain.*;
 import jade.core.behaviours.*;
 
 import jade.lang.acl.ACLMessage;
+import jade.lang.acl.MessageTemplate;
 import jade.proto.ContractNetInitiator;
 import jade.domain.FIPAAgentManagement.DFAgentDescription;
 
@@ -10,162 +11,213 @@ import org.json.JSONObject;
 
 import java.util.*;
 
-public class DriverSearchBehaviour extends FSMBehaviour {
+public class DriverSearchBehaviour extends ContractNetInitiator {
 
     public interface AcceptDecisionMaker {
         default boolean accept(double payment) {
             return true;
         }
 
+        default void noProposals() {}
+
         default void onConfirm() {}
 
         default void onEnd() {}
     }
 
+    private final MapModel.Intention intention;
+    private final AcceptDecisionMaker decisionMaker;
+    private final WaitConfirmBehaviour waitConfirmBehaviour;
+
     public DriverSearchBehaviour(Agent agent, MapModel.Intention intention, AcceptDecisionMaker decisionMaker) {
-        registerFirstState(new NegotiationBehavior(agent, decisionMaker, intention), "Negotiation");
-        registerLastState(new DummyBehaviour(), "Dummy");
+        super(agent, createCFP(intention));
+        this.intention = intention;
+        this.decisionMaker = decisionMaker;
+        this.waitConfirmBehaviour = new WaitConfirmBehaviour();
 
-        registerTransition("Negotiation", "Dummy", ACLMessage.INFORM);
-        registerTransition("Negotiation", "Dummy", ACLMessage.CANCEL);
-        registerTransition("Negotiation", "Negotiation", ACLMessage.FAILURE, new String[]{"Negotiation"});
+        registerHandleInform(waitConfirmBehaviour);
     }
 
-    private static class DummyBehaviour extends OneShotBehaviour {
-        @Override
-        public void action() {}
+    private static ACLMessage createCFP(MapModel.Intention intention)  {
+        ACLMessage cfp = new ACLMessage(ACLMessage.CFP);
+        cfp.setProtocol(FIPANames.InteractionProtocol.FIPA_CONTRACT_NET);
+        cfp.setLanguage("json");
+        cfp.setContent(new JSONObject()
+                .put("from", intention.from)
+                .put("to", intention.to)
+                .toString()
+        );
+        return cfp;
     }
 
-    private static class NegotiationBehavior extends ContractNetInitiator {
+    private static class Offer {
+        public final ACLMessage msg;
+        public final double payment;
 
-        private int result = -1;
-        MapModel.Intention intention;
-        AcceptDecisionMaker decisionMaker;
-
-        public NegotiationBehavior(Agent agent, AcceptDecisionMaker decisionMaker, MapModel.Intention intention) {
-            super(agent, createCFP(intention));
-            this.intention = intention;
-            this.decisionMaker = decisionMaker;
+        Offer(ACLMessage msg, double payment) {
+            this.msg = msg;
+            this.payment = payment;
         }
+    }
 
-        private static ACLMessage createCFP(MapModel.Intention intention)  {
-            ACLMessage cfp = new ACLMessage(ACLMessage.CFP);
-            cfp.setProtocol(FIPANames.InteractionProtocol.FIPA_CONTRACT_NET);
-            cfp.setLanguage("json");
-            cfp.setContent(new JSONObject()
-                    .put("from", intention.from)
-                    .put("to", intention.to)
-                    .toString()
-            );
-            return cfp;
-        }
+    @Override
+    protected Vector<ACLMessage> prepareCfps(ACLMessage __) {
+        System.out.printf(
+                "%s prepares cfps ...\n",
+                getAgent().getLocalName()
+        );
 
-        @Override
-        protected Vector<ACLMessage> prepareCfps(ACLMessage __) {
-            System.out.printf(
-                    "%s prepares cfps ...\n",
-                    getAgent().getLocalName()
-            );
-
-            Vector<ACLMessage> cfps = new Vector<>();
-            cfps.add(createCFP(intention));
-            try {
-                DFAgentDescription template = new DFAgentDescription();
-                template.addServices(CarpoolAgent.DRIVER_SERVICE);
-                DFAgentDescription[] descriptions = DFService.search(getAgent(), template);
-                for (DFAgentDescription description: descriptions) {
-                    cfps.get(0).addReceiver(description.getName());
+        Vector<ACLMessage> cfps = new Vector<>();
+        cfps.add(createCFP(intention));
+        int receiversCnt = 0;
+        try {
+            DFAgentDescription template = new DFAgentDescription();
+            template.addServices(CarpoolAgent.DRIVER_SERVICE);
+            DFAgentDescription[] descriptions = DFService.search(getAgent(), template);
+            for (DFAgentDescription description: descriptions) {
+                if (description.getName().equals(getAgent().getAID())) {
+                    continue;
                 }
-            } catch (Exception e) {
-                System.out.println("Error: " + e);
-                System.exit(1);
+                cfps.get(0).addReceiver(description.getName());
+                receiversCnt++;
             }
-            // We want to receive a reply in 10 secs
-            cfps.get(0).setReplyByDate(new Date(System.currentTimeMillis() + 10 * 1000));
-            return cfps;
+        } catch (Exception e) {
+            System.out.println("Error: " + e);
+            System.exit(1);
         }
-
-        private static class Offer {
-            public final ACLMessage msg;
-            public final double payment;
-
-            Offer(ACLMessage msg, double payment) {
-                this.msg = msg;
-                this.payment = payment;
-            }
+        if (receiversCnt == 0) {
+            decisionMaker.noProposals();
         }
+        // We want to receive a reply in 10 secs
+        cfps.get(0).setReplyByDate(new Date(System.currentTimeMillis() + 10 * 1000));
+        return cfps;
+    }
 
-        @Override
-        protected void handleAllResponses(Vector responses, Vector acceptances) {
-            ArrayList<Offer> offers = new ArrayList<>();
-            ArrayList<AID> busy = new ArrayList<>();
-            for (Object obj : responses) {
-                ACLMessage rsp = (ACLMessage) obj;
+    @Override
+    protected void handleAllResponses(Vector responses, Vector acceptances) {
+        ArrayList<Offer> offers = new ArrayList<>();
+        ArrayList<AID> busy = new ArrayList<>();
+        for (Object obj : responses) {
+            ACLMessage rsp = (ACLMessage) obj;
 
-                if (rsp.getPerformative() == ACLMessage.PROPOSE) {
-                    JSONObject content = new JSONObject(rsp.getContent());
-                    AID sender = rsp.getSender();
-                    double payment = content.getDouble("payment");
-                    offers.add(new Offer(rsp, payment));
+            if (rsp.getPerformative() == ACLMessage.PROPOSE) {
+                JSONObject content = new JSONObject(rsp.getContent());
+                AID sender = rsp.getSender();
+                double payment = content.getDouble("payment");
+                offers.add(new Offer(rsp, payment));
 
-                    System.out.printf(
-                            "%s receives proposal from %s with payment=%f\n",
-                            getAgent().getLocalName(),
-                            sender.getLocalName(),
-                            payment
-                    );
-                } else if (rsp.getPerformative() == ACLMessage.REFUSE) {
-                    JSONObject content = new JSONObject(rsp.getContent());
-                    if (content.getString("reason").equals("busy")) {
-                        busy.add(rsp.getSender());
-                    }
-                }
-            }
-
-            if (offers.isEmpty()) {
-                if (!busy.isEmpty()) {
-                    ACLMessage cfp = createCFP(intention);
-                    for (AID receiver: busy) {
-                        cfp.addReceiver(receiver);
-                    }
-                    Vector vec = new Vector();
-                    vec.add(cfp);
-                    newIteration(vec);
-                    return;
-                }
-            }
-
-            offers.sort((Offer a, Offer b) -> Double.compare(a.payment, b.payment));
-            Offer best = offers.get(0);
-
-            for (int i = 1; i < offers.size(); ++i) {
-                ACLMessage msg = offers.get(i).msg;
-                ACLMessage rejectMsg = msg.createReply();
-                rejectMsg.setPerformative(ACLMessage.REJECT_PROPOSAL);
-                acceptances.add(rejectMsg);
-            }
-
-            ACLMessage chosen = best.msg;
-            ACLMessage reply = chosen.createReply();
-
-            if (decisionMaker.accept(best.payment)) {
                 System.out.printf(
-                        "%s have chosen proposal from %s\n",
+                        "%s receives proposal from %s with payment=%f\n",
                         getAgent().getLocalName(),
-                        chosen.getSender().getLocalName()
+                        sender.getLocalName(),
+                        payment
                 );
-
-                reply.setPerformative(ACLMessage.ACCEPT_PROPOSAL);
-            } else {
-                result = ACLMessage.CANCEL;
-                reply.setPerformative(ACLMessage.REJECT_PROPOSAL);
+            } else if (rsp.getPerformative() == ACLMessage.REFUSE) {
+                JSONObject content = new JSONObject(rsp.getContent());
+                if (content.getString("reason").equals("busy")) {
+                    busy.add(rsp.getSender());
+                }
             }
-
-            acceptances.add(reply);
         }
 
+        if (offers.isEmpty()) {
+            if (!busy.isEmpty()) {
+                ACLMessage cfp = createCFP(intention);
+                for (AID receiver: busy) {
+                    cfp.addReceiver(receiver);
+                }
+                Vector vec = new Vector();
+                vec.add(cfp);
+                newIteration(vec);
+            }
+            return;
+        }
+
+        offers.sort((Offer a, Offer b) -> Double.compare(a.payment, b.payment));
+        Offer best = offers.get(0);
+
+        for (int i = 1; i < offers.size(); ++i) {
+            ACLMessage msg = offers.get(i).msg;
+            ACLMessage rejectMsg = msg.createReply();
+            rejectMsg.setPerformative(ACLMessage.REJECT_PROPOSAL);
+            acceptances.add(rejectMsg);
+        }
+
+        ACLMessage chosen = best.msg;
+        ACLMessage reply = chosen.createReply();
+
+        if (decisionMaker.accept(best.payment)) {
+            System.out.printf(
+                    "%s have chosen proposal from %s\n",
+                    getAgent().getLocalName(),
+                    chosen.getSender().getLocalName()
+            );
+
+            reply.setPerformative(ACLMessage.ACCEPT_PROPOSAL);
+        } else {
+            reply.setPerformative(ACLMessage.REJECT_PROPOSAL);
+        }
+
+        acceptances.add(reply);
+    }
+
+    @Override
+    protected void handleFailure(ACLMessage failure) {
+        System.out.printf(
+                "%s - receives failure message from %s\n",
+                getAgent().getLocalName(),
+                failure.getSender().getLocalName()
+        );
+
+        reset();
+    }
+
+    @Override
+    public void reset() {
+        super.reset();
+        waitConfirmBehaviour.reset();
+    }
+
+    @Override
+    public int onEnd() {
+        decisionMaker.onEnd();
+        return super.onEnd();
+    }
+
+    private class WaitConfirmBehaviour extends OneShotBehaviour {
+
         @Override
-        protected void handleInform(ACLMessage inform) {
+        public void action() {
+            ACLMessage inform = (ACLMessage) getDataStore().get(DriverSearchBehaviour.this.REPLY_KEY);
+
+            System.out.printf(
+                    "%s - receives inform message from %s\n",
+                    getAgent().getLocalName(),
+                    inform.getSender().getLocalName()
+            );
+
+            MessageTemplate tpl = MessageTemplate.and(
+                MessageTemplate.or(
+                        MessageTemplate.MatchPerformative(ACLMessage.CONFIRM),
+                        MessageTemplate.MatchPerformative(ACLMessage.DISCONFIRM)
+                ),
+                MessageTemplate.MatchSender(inform.getSender())
+            );
+
+            ACLMessage msg = getAgent().blockingReceive(tpl);
+            if (msg.getPerformative() == ACLMessage.CONFIRM) {
+                System.out.printf("%s - receives confirm from %s\n",
+                        getAgent().getLocalName(), msg.getSender().getLocalName());
+                handleConfirm();
+            } else if (msg.getPerformative() == ACLMessage.DISCONFIRM) {
+                System.out.printf("%s - receives disconfirm from %s\n",
+                        getAgent().getLocalName(), msg.getSender().getLocalName());
+                handleDisconfirm();
+            }
+        }
+
+        private void handleConfirm() {
+            DriverSearchBehaviour.this.decisionMaker.onConfirm();
             try {
                 ACLMessage notification = new ACLMessage(ACLMessage.INFORM);
                 notification.setContent(new JSONObject()
@@ -181,21 +233,14 @@ public class DriverSearchBehaviour extends FSMBehaviour {
                 }
 
                 getAgent().send(notification);
-                result = ACLMessage.INFORM;
             } catch (Exception e) {
                 System.out.println("Error: " + e);
                 System.exit(1);
             }
         }
 
-        @Override
-        protected void handleFailure(ACLMessage failure) {
-            result = ACLMessage.FAILURE;
-        }
-
-        @Override
-        public int onEnd() {
-            return result;
+        private void handleDisconfirm() {
+            DriverSearchBehaviour.this.reset();
         }
     }
 }

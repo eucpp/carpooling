@@ -1,4 +1,5 @@
 import java.util.*;
+import java.util.stream.Collectors;
 
 import jade.core.*;
 import jade.domain.*;
@@ -39,6 +40,7 @@ public class CarpoolAgent extends Agent {
 
     private ArrayList<PassengerAgent> passengers;
     private ArrayList<DriverAgent> drivers;
+    private Set<AID> agents;
 
     protected void setup() {
         try {
@@ -52,62 +54,77 @@ public class CarpoolAgent extends Agent {
             dfd.addServices(LOGGING_SERVICE);
             DFService.register(this, dfd);
 
-            for (DriverAgent vehicle : drivers) {
-                registerVehicle(getContainerController(), vehicle);
+            ContainerController cc = getContainerController();
+            for (DriverAgent driver : drivers) {
+                cc.acceptNewAgent(driver.toString(), driver).start();
             }
 
             for (PassengerAgent passenger : passengers) {
-                registerPassenger(getContainerController(), passenger);
+                cc.acceptNewAgent(passenger.toString(), passenger).start();
             }
+
+            agents = new HashSet<>();
+            agents.addAll(passengers.stream().map(Agent::getAID).collect(Collectors.toSet()));
+            agents.addAll(drivers.stream().map(Agent::getAID).collect(Collectors.toSet()));
 
 //            view = new CarpoolView(map);
 //            view.drawPassengers(passengers);
 
             addBehaviour(new Behaviour() {
-                private Map<AID, JSONObject> driversReady = new HashMap<>();
-                private Set<AID> passengersReady = new HashSet<>();
+                private Map<AID, JSONObject> ready = new HashMap<>();
 
                 @Override
                 public void action() {
+                    if (allReady()) {
+                        return;
+                    }
+
                     ACLMessage msg = getAgent().blockingReceive(
                             MessageTemplate.MatchPerformative(ACLMessage.INFORM)
                     );
                     AID sender = msg.getSender();
                     JSONObject content = new JSONObject(msg.getContent());
-                    String senderType = content.getString("sender-type");
-                    if (senderType.equals("passenger")) {
-                        assert !passengersReady.contains(sender);
-                        System.out.printf("%s ready to go!\n", sender.getLocalName());
-                        passengersReady.add(sender);
-                    } else if (senderType.equals("driver")) {
-                        assert !driversReady.containsKey(sender);
-                        driversReady.put(sender, content);
-                    }
+
+                    assert !ready.containsKey(sender);
+
+                    System.out.printf("Carpool - receive inform from %s\n", sender.getLocalName());
+
+                    ready.put(sender, content);
                 }
 
                 @Override
                 public boolean done() {
-                    boolean isDone = driversReady.keySet().containsAll(drivers)
-                            && passengersReady.containsAll(passengers);
-
+                    boolean isDone = allReady();
                     if (isDone) {
                         printStats();
                     }
                     return isDone;
                 }
 
+                private boolean allReady() {
+                    return ready.keySet().containsAll(agents);
+                }
+
                 private void printStats() {
-                    for (Map.Entry<AID, JSONObject> entry: driversReady.entrySet()) {
+                    for (Map.Entry<AID, JSONObject> entry: ready.entrySet()) {
                         AID driver = entry.getKey();
                         JSONObject content = entry.getValue();
+                        String senderType = content.getString("sender-type");
 
-                        String route = getRoute(content.getJSONArray("route"));
-                        String passengers = getPassengers(content.getJSONArray("passengers"));
+                        if (senderType.equals("driver")) {
+                            String route = getRoute(content.getJSONArray("route"));
+                            String passengers = getPassengers(content.getJSONArray("passengers"));
 
-                        System.out.printf(
-                                "%s ready to go!\nroute: %s\n passengers:\n%s",
-                                driver.getLocalName(), route, passengers
-                        );
+                            System.out.printf(
+                                    "%s ready to drive!\nroute: %s\n passengers:\n%s",
+                                    driver.getLocalName(), route, passengers
+                            );
+                        } else if (senderType.equals("passenger")) {
+                            System.out.printf(
+                                    "%s ready to go!\npayment: ?\n",
+                                    driver.getLocalName()
+                            );
+                        }
                     }
                 }
 
@@ -135,30 +152,8 @@ public class CarpoolAgent extends Agent {
         } catch (Exception e) {
             System.out.println("Error: " + e);
             e.printStackTrace(System.out);
-            System.exit(1); // ???
+            System.exit(1);
         }
-    }
-
-    private static void registerPassenger(ContainerController container, PassengerAgent agent)
-            throws StaleProxyException, FIPAException {
-        AgentController ac = container.acceptNewAgent(agent.toString(), agent);
-        ac.start();
-
-        DFAgentDescription dfd = new DFAgentDescription();
-        dfd.setName(agent.getAID());
-        dfd.addServices(PASSENGER_SERVICE);
-        DFService.register(agent, dfd);
-    }
-
-    private static void registerVehicle(ContainerController container, DriverAgent agent)
-            throws StaleProxyException, FIPAException {
-        AgentController ac = container.acceptNewAgent(agent.toString(), agent);
-        ac.start();
-
-        DFAgentDescription dfd = new DFAgentDescription();
-        dfd.setName(agent.getAID());
-        dfd.addServices(DRIVER_SERVICE);
-        DFService.register(agent, dfd);
     }
 
     private static ArrayList<PassengerAgent> generatePassengers(int n, MapModel map) {

@@ -12,7 +12,6 @@ import jade.lang.acl.*;
 
 import jade.proto.ContractNetResponder;
 
-
 public class DriverAgent extends Agent implements Driver {
 
     private static class Destination {
@@ -60,6 +59,7 @@ public class DriverAgent extends Agent implements Driver {
     private Plan prevPlan;
     private Plan currPlan;
     private MapModel.Intention intention;
+    private CheckProfitBehaviour checkBehaviour;
 
     private static final int CAPACITY = 3;
     private static final long CHECK_PROFIT_PERIOD_MS = 10 * 1000;
@@ -75,8 +75,9 @@ public class DriverAgent extends Agent implements Driver {
         this.newPlan = null;
         this.prevPlan = null;
         this.currPlan = new Plan(route, destinations, 0);
+        this.checkBehaviour = new CheckProfitBehaviour();
 
-        System.out.printf("%s initial route: %s\n", toString(), route.toString());
+        System.out.printf("%s - initial route: %s\n", toString(), route.toString());
     }
 
     @Override
@@ -90,31 +91,42 @@ public class DriverAgent extends Agent implements Driver {
                 getLocalName()
         );
 
+        register();
         addBehaviour(new NegotiationBehavior(this));
-        addBehaviour(new TickerBehaviour(this, CHECK_PROFIT_PERIOD_MS) {
-            private boolean isDone = false;
+        addBehaviour(checkBehaviour);
+    }
 
-            @Override
-            protected void onTick() {
-                addBehaviour(new DriverSearchBehaviour(getAgent(), intention, (double payment) -> {
-                    if (currPlan.getIncome() > -payment) {
-                        acceptPlan();
-                        isDone = true;
-                        return false;
-                    } else if (currPlan == prevPlan) {
-                        return true;
-                    }
-                    prevPlan = currPlan;
-                    return false;
-                }));
-            }
+    private void register() {
+        try {
+            DFAgentDescription dfd = new DFAgentDescription();
+            dfd.setName(getAID());
+            dfd.addServices(CarpoolAgent.DRIVER_SERVICE);
+            DFService.register(this, dfd);
+        } catch (Exception e) {
+            System.out.println("Error: " + e);
+            e.printStackTrace(System.out);
+            System.exit(1);
+        }
+    }
 
-
-        });
+    private void deregister() {
+        try {
+            DFService.deregister(this);
+        } catch (Exception e) {
+            System.out.println("Error: " + e);
+            e.printStackTrace(System.out);
+            System.exit(1);
+        }
     }
 
     private void acceptPlan() {
-        System.out.printf("%s - accepts plan and sends inform notifications to waiting passengers");
+        System.out.printf(
+                "%s - accepts plan and sends confirm notifications to waiting passengers\n",
+                getLocalName()
+        );
+
+        deregister();
+        removeBehaviour(checkBehaviour);
 
         Set<AID> passengers = currPlan.getPassengers();
         Set<String> passengerNames = passengers.stream().map(AID::getLocalName).collect(Collectors.toSet());
@@ -151,6 +163,8 @@ public class DriverAgent extends Agent implements Driver {
 
     private void quitDriving() {
         System.out.printf("%s - quits driving and becomes a passenger", getLocalName());
+
+        removeBehaviour(checkBehaviour);
 
         for (AID aid: currPlan.getPassengers()) {
             ACLMessage disconfirm = new ACLMessage(ACLMessage.DISCONFIRM);
@@ -189,6 +203,11 @@ public class DriverAgent extends Agent implements Driver {
                         }
 
                         @Override
+                        public void noProposals() {
+                            acceptPlan();
+                        }
+
+                        @Override
                         public void onConfirm() {
                             quitDriving();
                         }
@@ -215,7 +234,7 @@ public class DriverAgent extends Agent implements Driver {
 
             if (agent.newPlan != null) {
                 System.out.printf(
-                        "%s receive cfp from %s but it is busy now\n",
+                        "%s - receive cfp from %s but it is busy now\n",
                         getAgent().getLocalName(),
                         sender.getLocalName()
                 );
@@ -234,7 +253,7 @@ public class DriverAgent extends Agent implements Driver {
             MapModel.Node to = MapModel.Node.getNodeByID(content.getInt("to"));
 
             System.out.printf(
-                    "%s receive cfp from %s: from=%d; to=%d\n",
+                    "%s - receive cfp from %s: from=%d; to=%d\n",
                     getAgent().getLocalName(),
                     sender.getLocalName(),
                     from.id, to.id
