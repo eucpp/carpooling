@@ -22,7 +22,7 @@ public class PassengerAgent extends Agent implements Passenger {
         this.intention = intention;
 
         System.out.printf("%s intention: from %s to %s\n",
-                getLocalName(), intention.from.toString(), intention.to.toString());
+                toString(), intention.from.toString(), intention.to.toString());
     }
 
     @Override
@@ -57,7 +57,6 @@ public class PassengerAgent extends Agent implements Passenger {
             ACLMessage cfp = new ACLMessage(ACLMessage.CFP);
             MapModel.Intention intention = sender.getIntention();
             cfp.setProtocol(FIPANames.InteractionProtocol.FIPA_CONTRACT_NET);
-//            cfp.setConversationId(sender.getLocalName());
             cfp.setLanguage("json");
             cfp.setContent(new JSONObject()
                 .put("from", intention.from)
@@ -87,6 +86,8 @@ public class PassengerAgent extends Agent implements Passenger {
                 System.out.println("Error: " + e);
                 System.exit(1);
             }
+            // We want to receive a reply in 10 secs
+            cfps.get(0).setReplyByDate(new Date(System.currentTimeMillis() + 10 * 1000));
             return cfps;
         }
 

@@ -55,11 +55,7 @@ public class DriverAgent extends Agent implements Driver {
         this.map = map;
         this.inNegotiation = false;
 
-        System.out.printf(
-                "%s initial route: %s\n",
-                getLocalName(),
-                route.toString()
-        );
+        System.out.printf("%s initial route: %s\n", toString(), route.toString());
     }
 
     @Override

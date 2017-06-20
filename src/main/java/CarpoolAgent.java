@@ -7,6 +7,7 @@ import jade.lang.acl.*;
 import jade.core.behaviours.*;
 import jade.domain.FIPAAgentManagement.*;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 public class CarpoolAgent extends Agent {
@@ -63,7 +64,7 @@ public class CarpoolAgent extends Agent {
 //            view.drawPassengers(passengers);
 
             addBehaviour(new Behaviour() {
-                private Set<AID> driversReady = new HashSet<>();
+                private Map<AID, JSONObject> driversReady = new HashMap<>();
                 private Set<AID> passengersReady = new HashSet<>();
 
                 @Override
@@ -79,15 +80,56 @@ public class CarpoolAgent extends Agent {
                         System.out.printf("%s ready to go!\n", sender.getLocalName());
                         passengersReady.add(sender);
                     } else if (senderType.equals("driver")) {
-                        assert !driversReady.contains(sender);
-                        System.out.printf("%s ready to go!\n", sender.getLocalName());
-                        driversReady.add(sender);
+                        assert !driversReady.containsKey(sender);
+                        driversReady.put(sender, content);
                     }
                 }
 
                 @Override
                 public boolean done() {
-                    return driversReady.containsAll(drivers) && passengersReady.containsAll(passengers);
+                    boolean isDone = driversReady.keySet().containsAll(drivers)
+                            && passengersReady.containsAll(passengers);
+
+                    if (isDone) {
+                        printStats();
+                    }
+                    return isDone;
+                }
+
+                private void printStats() {
+                    for (Map.Entry<AID, JSONObject> entry: driversReady.entrySet()) {
+                        AID driver = entry.getKey();
+                        JSONObject content = entry.getValue();
+
+                        String route = getRoute(content.getJSONArray("route"));
+                        String passengers = getPassengers(content.getJSONArray("passengers"));
+
+                        System.out.printf(
+                                "%s ready to go!\nroute: %s\n passengers:\n%s",
+                                driver.getLocalName(), route, passengers
+                        );
+                    }
+                }
+
+                private String getRoute(JSONArray array) {
+                    ArrayList<MapModel.Node> nodes = new ArrayList<>();
+                    for (int i = 0; i < array.length(); ++i) {
+                        nodes.add(MapModel.Node.getNodeByID(array.getInt(i)));
+                    }
+                    return map.new Route(nodes).toString();
+                }
+
+                private String getPassengers(JSONArray array) {
+                    StringBuilder builder = new StringBuilder();
+                    for (int i = 0; i < array.length(); ++i) {
+                        JSONObject obj = array.getJSONObject(i);
+                        builder.append(String.format(
+                            "%s: %d ---> %d\n",
+                            obj.getString("name"),
+                            obj.getInt("from"), obj.getInt("to")
+                        ));
+                    }
+                    return builder.toString();
                 }
             });
         } catch (Exception e) {

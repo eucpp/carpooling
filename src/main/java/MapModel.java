@@ -85,6 +85,11 @@ public class MapModel {
                     path.stream().map(Node::toString).collect(Collectors.toList()));
         }
 
+        public Route(ArrayList<Node> nodes) {
+            this.path = nodes;
+            this.length = nodes.size() - 1;
+        }
+
         private Route(Node start) {
             this.path = new ArrayList<>();
             this.path.add(start);
