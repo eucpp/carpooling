@@ -78,7 +78,7 @@ public class PassengerAgent extends Agent implements Passenger {
             cfps.add((ACLMessage) cfp.clone());
             try {
                 DFAgentDescription template = new DFAgentDescription();
-                template.addServices(CarpoolAgent.VEHICLE_SERVICE);
+                template.addServices(CarpoolAgent.DRIVER_SERVICE);
                 DFAgentDescription[] descriptions = DFService.search(getAgent(), template);
                 for (DFAgentDescription description: descriptions) {
                     cfps.get(0).addReceiver(description.getName());
@@ -163,7 +163,25 @@ public class PassengerAgent extends Agent implements Passenger {
 
         @Override
         protected void handleInform(ACLMessage inform) {
+            try {
+                ACLMessage notification = new ACLMessage(ACLMessage.INFORM);
+                notification.setContent(new JSONObject()
+                        .put("sender-type", "passenger")
+                        .toString()
+                );
 
+                DFAgentDescription template = new DFAgentDescription();
+                template.addServices(CarpoolAgent.LOGGING_SERVICE);
+                DFAgentDescription[] descriptions = DFService.search(getAgent(), template);
+                for (DFAgentDescription description: descriptions) {
+                    notification.addReceiver(description.getName());
+                }
+
+                getAgent().send(notification);
+            } catch (Exception e) {
+                System.out.println("Error: " + e);
+                System.exit(1);
+            }
         }
     }
 }

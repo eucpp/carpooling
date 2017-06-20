@@ -1,43 +1,57 @@
 import java.util.*;
 
 import jade.core.*;
-import jade.wrapper.*;
-
 import jade.domain.*;
+import jade.wrapper.*;
+import jade.lang.acl.*;
+import jade.core.behaviours.*;
 import jade.domain.FIPAAgentManagement.*;
+
+import org.json.JSONObject;
 
 public class CarpoolAgent extends Agent {
 
+    public static String LOGGING_SERVICE_NAME = "LoggingService";
     public static String PASSENGER_SERVICE_NAME = "PassengerService";
-    public static String VEHICLE_SERVICE_NAME = "VehicleService";
+    public static String DRIVER_SERVICE_NAME = "DriverService";
 
+    public static ServiceDescription LOGGING_SERVICE;
     public static ServiceDescription PASSENGER_SERVICE;
-    public static ServiceDescription VEHICLE_SERVICE;
+    public static ServiceDescription DRIVER_SERVICE;
 
     static {
+        LOGGING_SERVICE = new ServiceDescription();
+        LOGGING_SERVICE.setName(LOGGING_SERVICE_NAME);
+        LOGGING_SERVICE.setType("carpooling-services");
+
         PASSENGER_SERVICE = new ServiceDescription();
         PASSENGER_SERVICE.setName(PASSENGER_SERVICE_NAME);
-        PASSENGER_SERVICE.setType("carpooling-service");
+        PASSENGER_SERVICE.setType("carpooling-services");
 
-        VEHICLE_SERVICE = new ServiceDescription();
-        VEHICLE_SERVICE.setName(VEHICLE_SERVICE_NAME);
-        VEHICLE_SERVICE.setType("carpooling-service");
+        DRIVER_SERVICE = new ServiceDescription();
+        DRIVER_SERVICE.setName(DRIVER_SERVICE_NAME);
+        DRIVER_SERVICE.setType("carpooling-services");
     }
 
     private MapModel map;
     private CarpoolView view;
 
     private ArrayList<PassengerAgent> passengers;
-    private ArrayList<DriverAgent> vehicles;
+    private ArrayList<DriverAgent> drivers;
 
     protected void setup() {
         try {
             map = MapModel.generate(20);
 
             passengers = generatePassengers(8, map);
-            vehicles = generateVehicles(4, map);
+            drivers = generateVehicles(4, map);
 
-            for (DriverAgent vehicle : vehicles) {
+            DFAgentDescription dfd = new DFAgentDescription();
+            dfd.setName(getAID());
+            dfd.addServices(LOGGING_SERVICE);
+            DFService.register(this, dfd);
+
+            for (DriverAgent vehicle : drivers) {
                 registerVehicle(getContainerController(), vehicle);
             }
 
@@ -45,8 +59,37 @@ public class CarpoolAgent extends Agent {
                 registerPassenger(getContainerController(), passenger);
             }
 
-            view = new CarpoolView(map);
-            view.drawPassengers(passengers);
+//            view = new CarpoolView(map);
+//            view.drawPassengers(passengers);
+
+            addBehaviour(new Behaviour() {
+                private Set<AID> driversReady = new HashSet<>();
+                private Set<AID> passengersReady = new HashSet<>();
+
+                @Override
+                public void action() {
+                    ACLMessage msg = getAgent().blockingReceive(
+                            MessageTemplate.MatchPerformative(ACLMessage.INFORM)
+                    );
+                    AID sender = msg.getSender();
+                    JSONObject content = new JSONObject(msg.getContent());
+                    String senderType = content.getString("sender-type");
+                    if (senderType.equals("passenger")) {
+                        assert !passengersReady.contains(sender);
+                        System.out.printf("%s ready to go!\n", sender.getLocalName());
+                        passengersReady.add(sender);
+                    } else if (senderType.equals("driver")) {
+                        assert !driversReady.contains(sender);
+                        System.out.printf("%s ready to go!\n", sender.getLocalName());
+                        driversReady.add(sender);
+                    }
+                }
+
+                @Override
+                public boolean done() {
+                    return driversReady.containsAll(drivers) && passengersReady.containsAll(passengers);
+                }
+            });
         } catch (Exception e) {
             System.out.println("Error: " + e);
             e.printStackTrace(System.out);
@@ -62,7 +105,6 @@ public class CarpoolAgent extends Agent {
         DFAgentDescription dfd = new DFAgentDescription();
         dfd.setName(agent.getAID());
         dfd.addServices(PASSENGER_SERVICE);
-
         DFService.register(agent, dfd);
     }
 
@@ -73,7 +115,7 @@ public class CarpoolAgent extends Agent {
 
         DFAgentDescription dfd = new DFAgentDescription();
         dfd.setName(agent.getAID());
-        dfd.addServices(VEHICLE_SERVICE);
+        dfd.addServices(DRIVER_SERVICE);
         DFService.register(agent, dfd);
     }
 
