@@ -13,7 +13,13 @@ import java.util.*;
 public class DriverSearchBehaviour extends FSMBehaviour {
 
     public interface AcceptDecisionMaker {
-        boolean accept(double payment);
+        default boolean accept(double payment) {
+            return true;
+        }
+
+        default void onConfirm() {}
+
+        default void onEnd() {}
     }
 
     public DriverSearchBehaviour(Agent agent, MapModel.Intention intention, AcceptDecisionMaker decisionMaker) {

@@ -65,6 +65,10 @@ public class MapModel {
             return path.get(path.size() - 1);
         }
 
+        public List<Node> getNodes() {
+            return path;
+        }
+
         public void join(Route route) {
             assert getLast().id == route.getFirst().id;
 

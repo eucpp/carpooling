@@ -1,5 +1,9 @@
 import java.util.*;
+import java.util.stream.Collectors;
 
+import jade.core.behaviours.TickerBehaviour;
+import jade.domain.DFService;
+import jade.domain.FIPAAgentManagement.DFAgentDescription;
 import jade.domain.FIPANames;
 import org.json.*;
 
@@ -10,6 +14,22 @@ import jade.proto.ContractNetResponder;
 
 
 public class DriverAgent extends Agent implements Driver {
+
+    private static class Destination {
+        public enum Tag {
+            SOURCE, SINK
+        }
+
+        public final AID aid;
+        public final Tag tag;
+        public final MapModel.Node node;
+
+        public Destination(AID aid, Tag tag, MapModel.Node node) {
+            this.aid = aid;
+            this.tag = tag;
+            this.node = node;
+        }
+    }
 
     private static class Plan {
         private final MapModel.Route route;
@@ -26,22 +46,23 @@ public class DriverAgent extends Agent implements Driver {
             return payment - route.getCost();
         }
 
-        public double getCost() {
-            if (route.getLength() == Double.MAX_VALUE) {
-                return 0;
-            }
-            return payment / route.getLength();
+        public Set<AID> getPassengers() {
+            return destinations.stream()
+                    .filter(dst -> dst.tag == Destination.Tag.SOURCE)
+                    .map(dst -> dst.aid)
+                    .collect(Collectors.toSet());
         }
     }
 
     private final int id;
     private MapModel map;
     private Plan newPlan;
-    private Plan currentPlan;
+    private Plan prevPlan;
+    private Plan currPlan;
     private MapModel.Intention intention;
-    boolean inNegotiation;
 
     private static final int CAPACITY = 3;
+    private static final long CHECK_PROFIT_PERIOD_MS = 10 * 1000;
 
     private static int next_id = 0;
 
@@ -49,11 +70,11 @@ public class DriverAgent extends Agent implements Driver {
         Set<Destination> destinations = new HashSet<>();
         MapModel.Route route = map.getRoute(intention.from, intention.to);
         this.id = next_id++;
-        this.currentPlan = new Plan(route, destinations, 0);
-        this.newPlan = null;
         this.intention = intention;
         this.map = map;
-        this.inNegotiation = false;
+        this.newPlan = null;
+        this.prevPlan = null;
+        this.currPlan = new Plan(route, destinations, 0);
 
         System.out.printf("%s initial route: %s\n", toString(), route.toString());
     }
@@ -70,21 +91,114 @@ public class DriverAgent extends Agent implements Driver {
         );
 
         addBehaviour(new NegotiationBehavior(this));
+        addBehaviour(new TickerBehaviour(this, CHECK_PROFIT_PERIOD_MS) {
+            private boolean isDone = false;
+
+            @Override
+            protected void onTick() {
+                addBehaviour(new DriverSearchBehaviour(getAgent(), intention, (double payment) -> {
+                    if (currPlan.getIncome() > -payment) {
+                        acceptPlan();
+                        isDone = true;
+                        return false;
+                    } else if (currPlan == prevPlan) {
+                        return true;
+                    }
+                    prevPlan = currPlan;
+                    return false;
+                }));
+            }
+
+
+        });
     }
 
-    private static class Destination {
-        public enum Tag {
-            SOURCE, SINK
+    private void acceptPlan() {
+        System.out.printf("%s - accepts plan and sends inform notifications to waiting passengers");
+
+        Set<AID> passengers = currPlan.getPassengers();
+        Set<String> passengerNames = passengers.stream().map(AID::getLocalName).collect(Collectors.toSet());
+
+        for (AID aid: passengers) {
+            ACLMessage confirm = new ACLMessage(ACLMessage.CONFIRM);
+            confirm.addReceiver(aid);
+            send(confirm);
         }
 
-        public final AID aid;
-        public final Tag tag;
-        public final MapModel.Node node;
+        try {
+            ACLMessage notification = new ACLMessage(ACLMessage.INFORM);
+            notification.setContent(new JSONObject()
+                    .put("sender-type", "driver")
+                    .put("income", currPlan.getIncome())
+                    .put("route", currPlan.route.getNodes())
+                    .put("passengers", passengerNames)
+                    .toString()
+            );
 
-        public Destination(AID aid, Tag tag, MapModel.Node node) {
-            this.aid = aid;
-            this.tag = tag;
-            this.node = node;
+            DFAgentDescription template = new DFAgentDescription();
+            template.addServices(CarpoolAgent.LOGGING_SERVICE);
+            DFAgentDescription[] descriptions = DFService.search(this, template);
+            for (DFAgentDescription description: descriptions) {
+                notification.addReceiver(description.getName());
+            }
+
+            send(notification);
+        } catch (Exception e) {
+            System.out.println("Error: " + e);
+            System.exit(1);
+        }
+    }
+
+    private void quitDriving() {
+        System.out.printf("%s - quits driving and becomes a passenger", getLocalName());
+
+        for (AID aid: currPlan.getPassengers()) {
+            ACLMessage disconfirm = new ACLMessage(ACLMessage.DISCONFIRM);
+            disconfirm.addReceiver(aid);
+            send(disconfirm);
+        }
+    }
+
+    private class CheckProfitBehaviour extends TickerBehaviour {
+
+        private boolean running = false;
+
+        CheckProfitBehaviour() {
+            super(DriverAgent.this, CHECK_PROFIT_PERIOD_MS);
+        }
+
+        @Override
+        protected void onTick() {
+            if (running) {
+                return;
+            }
+            running = true;
+
+            addBehaviour(new DriverSearchBehaviour(getAgent(), intention,
+                    new DriverSearchBehaviour.AcceptDecisionMaker() {
+                        @Override
+                        public boolean accept(double payment) {
+                            if (currPlan.getIncome() > -payment) {
+                                acceptPlan();
+                                return false;
+                            } else if (currPlan == prevPlan) {
+                                return true;
+                            }
+                            prevPlan = currPlan;
+                            return false;
+                        }
+
+                        @Override
+                        public void onConfirm() {
+                            quitDriving();
+                        }
+
+                        @Override
+                        public void onEnd() {
+                            running = false;
+                        }
+                    })
+            );
         }
     }
 
@@ -126,7 +240,7 @@ public class DriverAgent extends Agent implements Driver {
                     from.id, to.id
             );
 
-            HashSet<Destination> newDestinations = new HashSet<>(agent.currentPlan.destinations);
+            HashSet<Destination> newDestinations = new HashSet<>(agent.currPlan.destinations);
             newDestinations.add(new Destination(sender, Destination.Tag.SOURCE, from));
             newDestinations.add(new Destination(sender, Destination.Tag.SINK, to));
 
@@ -144,10 +258,10 @@ public class DriverAgent extends Agent implements Driver {
 
             MapModel.Route passengerRoute = routes.get(sender);
             double passengerPayment = Math.max(
-                    Math.abs(agent.currentPlan.route.getCost() - vehicleRoute.getCost()),
+                    Math.abs(agent.currPlan.route.getCost() - vehicleRoute.getCost()),
                     passengerRoute.getCost()
             );
-            double totalPayment = agent.currentPlan.payment + passengerPayment;
+            double totalPayment = agent.currPlan.payment + passengerPayment;
             Plan newPlan = new Plan(vehicleRoute, newDestinations, totalPayment);
 
             System.out.printf(
@@ -165,7 +279,7 @@ public class DriverAgent extends Agent implements Driver {
                     passengerPayment
             );
 
-            if (newPlan.getIncome() >= agent.currentPlan.getIncome()) {
+            if (newPlan.getIncome() >= agent.currPlan.getIncome()) {
                 System.out.println(String.format(
                         "%s - proposes route for %s",
                         getAgent().getLocalName(),
@@ -208,7 +322,7 @@ public class DriverAgent extends Agent implements Driver {
             );
 
             DriverAgent agent = (DriverAgent) getAgent();
-            agent.currentPlan = agent.newPlan;
+            agent.currPlan = agent.newPlan;
             agent.newPlan = null;
 
             ACLMessage inform = new ACLMessage(ACLMessage.INFORM);
