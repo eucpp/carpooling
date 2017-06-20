@@ -28,12 +28,14 @@ public class DriverSearchBehaviour extends ContractNetInitiator {
     private final MapModel.Intention intention;
     private final AcceptDecisionMaker decisionMaker;
     private final WaitConfirmBehaviour waitConfirmBehaviour;
+    private double payment;
 
     public DriverSearchBehaviour(Agent agent, MapModel.Intention intention, AcceptDecisionMaker decisionMaker) {
         super(agent, createCFP(intention));
         this.intention = intention;
         this.decisionMaker = decisionMaker;
         this.waitConfirmBehaviour = new WaitConfirmBehaviour();
+        this.payment = -1;
 
         registerHandleInform(waitConfirmBehaviour);
     }
@@ -103,7 +105,7 @@ public class DriverSearchBehaviour extends ContractNetInitiator {
             if (rsp.getPerformative() == ACLMessage.PROPOSE) {
                 JSONObject content = new JSONObject(rsp.getContent());
                 AID sender = rsp.getSender();
-                double payment = content.getDouble("payment");
+                payment = content.getDouble("payment");
                 offers.add(new Offer(rsp, payment));
 
                 System.out.printf(
@@ -130,6 +132,7 @@ public class DriverSearchBehaviour extends ContractNetInitiator {
                 vec.add(cfp);
                 newIteration(vec);
             }
+            decisionMaker.noProposals();
             return;
         }
 
@@ -176,6 +179,7 @@ public class DriverSearchBehaviour extends ContractNetInitiator {
     public void reset() {
         super.reset();
         waitConfirmBehaviour.reset();
+        payment = -1;
     }
 
     @Override
@@ -222,6 +226,7 @@ public class DriverSearchBehaviour extends ContractNetInitiator {
                 ACLMessage notification = new ACLMessage(ACLMessage.INFORM);
                 notification.setContent(new JSONObject()
                         .put("sender-type", "passenger")
+                        .put("payment", payment)
                         .toString()
                 );
 

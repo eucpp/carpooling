@@ -53,6 +53,8 @@ public class DriverAgent extends Agent implements Driver {
         }
     }
 
+    private static final double DRIVER_PREMIUM = 1;
+
     private final int id;
     private MapModel map;
     private Plan newPlan;
@@ -62,7 +64,7 @@ public class DriverAgent extends Agent implements Driver {
     private CheckProfitBehaviour checkBehaviour;
 
     private static final int CAPACITY = 3;
-    private static final long CHECK_PROFIT_PERIOD_MS = 10 * 1000;
+    private static final long CHECK_PROFIT_PERIOD_MS = 5 * 1000;
 
     private static int next_id = 0;
 
@@ -139,10 +141,13 @@ public class DriverAgent extends Agent implements Driver {
 
         try {
             ACLMessage notification = new ACLMessage(ACLMessage.INFORM);
+            List<String> route = currPlan.route.getNodes().stream()
+                    .map(MapModel.Node::toString)
+                    .collect(Collectors.toList());
             notification.setContent(new JSONObject()
                     .put("sender-type", "driver")
                     .put("income", currPlan.getIncome())
-                    .put("route", currPlan.route.getNodes())
+                    .put("route", route)
                     .put("passengers", passengerNames)
                     .toString()
             );
@@ -178,7 +183,7 @@ public class DriverAgent extends Agent implements Driver {
         private boolean running = false;
 
         CheckProfitBehaviour() {
-            super(DriverAgent.this, CHECK_PROFIT_PERIOD_MS);
+            super(DriverAgent.this, CHECK_PROFIT_PERIOD_MS + new Random().nextInt(1000));
         }
 
         @Override
@@ -277,7 +282,7 @@ public class DriverAgent extends Agent implements Driver {
 
             MapModel.Route passengerRoute = routes.get(sender);
             double passengerPayment = Math.max(
-                    Math.abs(agent.currPlan.route.getCost() - vehicleRoute.getCost()),
+                    Math.abs(agent.currPlan.route.getCost() - vehicleRoute.getCost()) + DRIVER_PREMIUM,
                     passengerRoute.getCost()
             );
             double totalPayment = agent.currPlan.payment + passengerPayment;
@@ -298,7 +303,7 @@ public class DriverAgent extends Agent implements Driver {
                     passengerPayment
             );
 
-            if (newPlan.getIncome() >= agent.currPlan.getIncome()) {
+            if (newPlan.getIncome() > agent.currPlan.getIncome()) {
                 System.out.println(String.format(
                         "%s - proposes route for %s",
                         getAgent().getLocalName(),

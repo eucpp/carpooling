@@ -114,15 +114,16 @@ public class CarpoolAgent extends Agent {
                         if (senderType.equals("driver")) {
                             String route = getRoute(content.getJSONArray("route"));
                             String passengers = getPassengers(content.getJSONArray("passengers"));
+                            double income = content.getDouble("income");
 
                             System.out.printf(
-                                    "%s ready to drive!\nroute: %s\n passengers:\n%s",
-                                    driver.getLocalName(), route, passengers
+                                    "%s ready to drive!\nincome: %f\nroute: %s\npassengers: %s\n",
+                                    driver.getLocalName(), income, route, passengers
                             );
                         } else if (senderType.equals("passenger")) {
                             System.out.printf(
-                                    "%s ready to go!\npayment: ?\n",
-                                    driver.getLocalName()
+                                    "%s ready to go!\npayment: %f\n",
+                                    driver.getLocalName(), content.getDouble("payment")
                             );
                         }
                     }
@@ -139,12 +140,10 @@ public class CarpoolAgent extends Agent {
                 private String getPassengers(JSONArray array) {
                     StringBuilder builder = new StringBuilder();
                     for (int i = 0; i < array.length(); ++i) {
-                        JSONObject obj = array.getJSONObject(i);
-                        builder.append(String.format(
-                            "%s: %d ---> %d\n",
-                            obj.getString("name"),
-                            obj.getInt("from"), obj.getInt("to")
-                        ));
+                        builder.append(array.get(i));
+                        if (i != array.length() - 1) {
+                            builder.append(", ");
+                        }
                     }
                     return builder.toString();
                 }
