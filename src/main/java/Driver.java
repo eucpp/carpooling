@@ -17,6 +17,5 @@ public interface Driver {
     void incAttemptCount();
 
     boolean inBlackList(AID agent);
-//    void addToBlackList(AID agent);
-//    void removeFromBlackList(AID agent);
+    void addToBlackList(AID agent);
 }

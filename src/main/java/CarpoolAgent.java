@@ -35,10 +35,10 @@ public class CarpoolAgent extends Agent {
 
     protected void setup() {
         try {
-            map = MapModel.generate(20);
+            map = MapModel.generate(104, 4, 10);
             map.exportToDot();
 
-            ArrayList<DriverAgent> drivers = generateDrivers(10, map);
+            ArrayList<DriverAgent> drivers = generateDrivers(60, map);
 
             DFAgentDescription dfd = new DFAgentDescription();
             dfd.setName(getAID());
@@ -163,10 +163,15 @@ public class CarpoolAgent extends Agent {
         Random rnd = new Random(42);
         for (int i = 0; i < n; ++i) {
             MapModel.Node from = nodes.get(rnd.nextInt(nodes.size()));
+            while (from.districtType != MapModel.DistrictType.Suburb) {
+                from = nodes.get(rnd.nextInt(nodes.size()));
+            }
+
             MapModel.Node to = nodes.get(rnd.nextInt(nodes.size()));
-            while (to == from) {
+            while (to.districtType != MapModel.DistrictType.Center) {
                 to = nodes.get(rnd.nextInt(nodes.size()));
             }
+
             DriverAgent vehicle = new DriverAgent(new MapModel.Intention(from, to), map);
             vehicles.add(vehicle);
         }

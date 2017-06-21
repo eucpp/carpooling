@@ -14,8 +14,14 @@ import org.jgrapht.alg.ConnectivityInspector;
 
 public class MapModel {
 
+    public enum DistrictType {
+        Center, Suburb
+    }
+
     public static class Node {
         public final int id;
+        public final DistrictType districtType;
+        public final int districtId;
 
         private static int next_id = 1;
         private static HashMap<Integer, Node> nodes = new HashMap<>();
@@ -24,8 +30,10 @@ public class MapModel {
             return nodes.get(id);
         }
 
-        Node() {
+        Node(int districtId, DistrictType districtType) {
             id = next_id++;
+            this.districtId = districtId;
+            this.districtType = districtType;
             nodes.put(id, this);
         }
 
@@ -117,15 +125,36 @@ public class MapModel {
     private UndirectedGraph<Node, Edge> graph;
     private DijkstraShortestPath<MapModel.Node, MapModel.Edge> dijkstra;
 
-    public static MapModel generate(int n) {
+    public static MapModel generate(int n, int centerN, int districtN) {
         MapModel model = new MapModel();
+        int nodesInDistrict = (n - centerN) / districtN;
+        int districtId = 1;
 
 //        double p = 0.5;
-        long seed = 42;
+        long seed = 21;
         Random rnd = new Random(seed);
 
-        GraphGenerator<Node, Edge, Node> generator = new StarGraphGenerator<>(n);
-        generator.generateGraph(model.graph, () -> new Node(), null);
+        // generate city center
+        int dId = districtId;
+        GraphGenerator<Node, Edge, Node> generator = new CompleteGraphGenerator<>(centerN);
+        generator.generateGraph(model.graph, () -> new Node(dId, DistrictType.Center), null);
+
+        ArrayList<MapModel.Node> centerNodes = new ArrayList<>(model.graph.vertexSet());
+
+        for (int i = 1; i < districtN; ++i) {
+            int sdId = ++districtId;
+            generator = new ScaleFreeGraphGenerator<>(nodesInDistrict, rnd.nextInt());
+            UndirectedGraph<Node, Edge> suburb = new SimpleGraph<>(Edge.class);
+            generator.generateGraph(suburb, () -> new Node(sdId, DistrictType.Suburb), null);
+
+            ArrayList<MapModel.Node> suburbNodes = new ArrayList<>(suburb.vertexSet());
+
+            Node from = suburbNodes.get(rnd.nextInt(suburbNodes.size()));
+            Node to = centerNodes.get(rnd.nextInt(centerNodes.size()));
+
+            Graphs.addGraph(model.graph, suburb);
+            model.graph.addEdge(from, to);
+        }
 
         ListenableUndirectedGraph<Node, Edge> g = new ListenableUndirectedGraph<>(model.graph);
         ConnectivityInspector<Node, Edge> inspector = new ConnectivityInspector<>(g);

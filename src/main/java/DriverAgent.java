@@ -116,8 +116,8 @@ public class DriverAgent extends Agent implements Driver {
     private int attemptCnt;
     private boolean isDone;
 
-    private static final int CAPACITY = 3;
-    private static final int MAX_ATTEMPT_COUNT = 3;
+    private static final int CAPACITY = 4;
+    private static final int MAX_ATTEMPT_COUNT = 2;
     private static final long CHECK_PROFIT_PERIOD_MS = 3 * 1000;
     private static final double DRIVER_PREMIUM = 0;
 
@@ -182,6 +182,11 @@ public class DriverAgent extends Agent implements Driver {
     @Override
     public boolean inBlackList(AID aid) {
         return blackList.contains(aid);
+    }
+
+    @Override
+    public void addToBlackList(AID aid) {
+        blackList.add(aid);
     }
 
     @Override
@@ -283,7 +288,7 @@ public class DriverAgent extends Agent implements Driver {
     private class CheckProfitBehaviour extends TickerBehaviour {
 
         CheckProfitBehaviour() {
-            super(DriverAgent.this, CHECK_PROFIT_PERIOD_MS + new Random().nextInt(10 * 1000));
+            super(DriverAgent.this, CHECK_PROFIT_PERIOD_MS + new Random().nextInt(1000));
         }
 
         @Override
