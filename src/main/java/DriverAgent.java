@@ -30,19 +30,48 @@ public class DriverAgent extends Agent implements Driver {
         }
     }
 
-    private static class Plan {
-        private final MapModel.Route route;
-        private final Set<Destination> destinations;
-        private final double payment;
+    private static class PassengerPlan {
+        public final AID aid;
+        public final MapModel.Node from;
+        public final MapModel.Node to;
+        public final double payment;
 
-        public Plan(MapModel.Route route, Set<Destination> destinations, double payment) {
-            this.route = route;
-            this.destinations = destinations;
+        public PassengerPlan(AID aid, MapModel.Node from, MapModel.Node to, double payment) {
+            this.aid = aid;
+            this.from = from;
+            this.to = to;
             this.payment = payment;
         }
 
+        public JSONObject toJSON() {
+            return new JSONObject()
+                    .put("name", aid.getLocalName())
+                    .put("from", from.id)
+                    .put("to", to.id)
+                    .put("payment", payment);
+        }
+    }
+
+    private static class Plan {
+        private final MapModel.Route route;
+        private final Set<Destination> destinations;
+        private final Map<AID, Double> payments;
+        private final double totalPayment;
+
+        public Plan(
+                MapModel.Route route,
+                Set<Destination> destinations,
+                Map<AID, Double> payments,
+                double payment
+        ) {
+            this.route = route;
+            this.destinations = destinations;
+            this.payments = payments;
+            this.totalPayment = payment;
+        }
+
         public double getIncome() {
-            return payment - route.getCost();
+            return totalPayment - route.getCost();
         }
 
         public Set<AID> getPassengers() {
@@ -50,6 +79,25 @@ public class DriverAgent extends Agent implements Driver {
                     .filter(dst -> dst.tag == Destination.Tag.SOURCE)
                     .map(dst -> dst.aid)
                     .collect(Collectors.toSet());
+        }
+
+        public List<PassengerPlan> getPassengerPlans() {
+            ArrayList<PassengerPlan> plans = new ArrayList<>();
+            for (AID aid: getPassengers()) {
+                MapModel.Node from = destinations.stream()
+                        .filter(dst -> dst.aid == aid && dst.tag == Destination.Tag.SOURCE)
+                        .map(dst -> dst.node)
+                        .collect(Collectors.toList())
+                        .get(0);
+                MapModel.Node to = destinations.stream()
+                        .filter(dst -> dst.aid == aid && dst.tag == Destination.Tag.SINK)
+                        .map(dst -> dst.node)
+                        .collect(Collectors.toList())
+                        .get(0);
+                double payment = payments.get(aid);
+                plans.add(new PassengerPlan(aid, from, to, payment));
+            }
+            return plans;
         }
     }
 
@@ -70,13 +118,14 @@ public class DriverAgent extends Agent implements Driver {
 
     public DriverAgent(MapModel.Intention intention, MapModel map) {
         Set<Destination> destinations = new HashSet<>();
+        Map<AID, Double> payments = new HashMap<>();
         MapModel.Route route = map.getRoute(intention.from, intention.to);
         this.id = next_id++;
         this.intention = intention;
         this.map = map;
         this.newPlan = null;
         this.prevPlan = null;
-        this.currPlan = new Plan(route, destinations, 0);
+        this.currPlan = new Plan(route, destinations, payments, 0);
         this.checkBehaviour = new CheckProfitBehaviour();
 
         System.out.printf("%s - initial route: %s\n", toString(), route.toString());
@@ -144,11 +193,15 @@ public class DriverAgent extends Agent implements Driver {
             List<String> route = currPlan.route.getNodes().stream()
                     .map(MapModel.Node::toString)
                     .collect(Collectors.toList());
+            List<JSONObject> passengerPlans = currPlan.getPassengerPlans().stream()
+                    .map(PassengerPlan::toJSON)
+                    .collect(Collectors.toList());
             notification.setContent(new JSONObject()
                     .put("sender-type", "driver")
+                    .put("cost", currPlan.route.getCost())
                     .put("income", currPlan.getIncome())
                     .put("route", route)
-                    .put("passengers", passengerNames)
+                    .put("passengers", passengerPlans)
                     .toString()
             );
 
@@ -285,22 +338,23 @@ public class DriverAgent extends Agent implements Driver {
                     Math.abs(agent.currPlan.route.getCost() - vehicleRoute.getCost()) + DRIVER_PREMIUM,
                     passengerRoute.getCost()
             );
-            double totalPayment = agent.currPlan.payment + passengerPayment;
-            Plan newPlan = new Plan(vehicleRoute, newDestinations, totalPayment);
+            Map<AID, Double> newPayments = new HashMap<>(agent.currPlan.payments);
+            newPayments.put(sender, passengerPayment);
+            double totalPayment = agent.currPlan.totalPayment + passengerPayment;
+
+            Plan newPlan = new Plan(vehicleRoute, newDestinations, newPayments, totalPayment);
 
             System.out.printf(
-                    "%s builds a route: %s; income=%f;\n",
-                    getAgent().getLocalName(),
-                    vehicleRoute.toString(),
-                    newPlan.getIncome()
-            );
-
-            System.out.printf(
-                    "%s - route for %s: %s; payment=%f\n",
+                    "%s - builds a route for %s\n" +
+                    "    full route: %s\n" +
+                    "    passenger route: %s\n" +
+                    "    driver income = %f\n" +
+                    "    passenger payment = %f\n",
                     getAgent().getLocalName(),
                     sender.getLocalName(),
+                    vehicleRoute.toString(),
                     passengerRoute.toString(),
-                    passengerPayment
+                    newPlan.getIncome(), passengerPayment
             );
 
             if (newPlan.getIncome() > agent.currPlan.getIncome()) {
@@ -340,7 +394,7 @@ public class DriverAgent extends Agent implements Driver {
                 ACLMessage cfp, ACLMessage propose, ACLMessage accept
         ) {
             System.out.printf(
-                    "%s receives accept from %s\n",
+                    "%s - receives accept from %s\n",
                     getAgent().getLocalName(),
                     accept.getSender().getLocalName()
             );
@@ -359,7 +413,7 @@ public class DriverAgent extends Agent implements Driver {
                 ACLMessage cfp, ACLMessage propose, ACLMessage accept
         ) {
             System.out.printf(
-                    "%s receives reject from %s\n",
+                    "%s - receives reject from %s\n",
                     getAgent().getLocalName(),
                     accept.getSender().getLocalName()
             );

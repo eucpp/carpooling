@@ -109,7 +109,7 @@ public class DriverSearchBehaviour extends ContractNetInitiator {
                 offers.add(new Offer(rsp, payment));
 
                 System.out.printf(
-                        "%s receives proposal from %s with payment=%f\n",
+                        "%s - receives proposal from %s with payment=%f\n",
                         getAgent().getLocalName(),
                         sender.getLocalName(),
                         payment
@@ -151,7 +151,7 @@ public class DriverSearchBehaviour extends ContractNetInitiator {
 
         if (decisionMaker.accept(best.payment)) {
             System.out.printf(
-                    "%s have chosen proposal from %s\n",
+                    "%s - have chosen proposal from %s\n",
                     getAgent().getLocalName(),
                     chosen.getSender().getLocalName()
             );
