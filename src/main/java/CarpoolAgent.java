@@ -36,7 +36,6 @@ public class CarpoolAgent extends Agent {
     }
 
     private MapModel map;
-    private CarpoolView view;
 
     private ArrayList<PassengerAgent> passengers;
     private ArrayList<DriverAgent> drivers;
@@ -45,9 +44,10 @@ public class CarpoolAgent extends Agent {
     protected void setup() {
         try {
             map = MapModel.generate(20);
+            map.exportToDot();
 
-            passengers = generatePassengers(8, map);
-            drivers = generateVehicles(4, map);
+            passengers = generatePassengers(20, map);
+            drivers = generateVehicles(5, map);
 
             DFAgentDescription dfd = new DFAgentDescription();
             dfd.setName(getAID());
@@ -66,9 +66,6 @@ public class CarpoolAgent extends Agent {
             agents = new HashSet<>();
             agents.addAll(passengers.stream().map(Agent::getAID).collect(Collectors.toSet()));
             agents.addAll(drivers.stream().map(Agent::getAID).collect(Collectors.toSet()));
-
-//            view = new CarpoolView(map);
-//            view.drawPassengers(passengers);
 
             addBehaviour(new Behaviour() {
                 private Map<AID, JSONObject> ready = new HashMap<>();

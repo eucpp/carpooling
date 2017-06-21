@@ -15,7 +15,7 @@ public class PassengerAgent extends Agent implements Passenger {
     private final int id;
     private final MapModel.Intention intention;
 
-    private static int next_id = 0;
+    private static int next_id = 1;
 
     public PassengerAgent(MapModel.Intention intention) {
         this.id = next_id++;

@@ -114,7 +114,7 @@ public class DriverAgent extends Agent implements Driver {
     private static final int CAPACITY = 3;
     private static final long CHECK_PROFIT_PERIOD_MS = 5 * 1000;
 
-    private static int next_id = 0;
+    private static int next_id = 1;
 
     public DriverAgent(MapModel.Intention intention, MapModel map) {
         Set<Destination> destinations = new HashSet<>();

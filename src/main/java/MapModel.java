@@ -1,10 +1,14 @@
+import java.io.File;
 import java.util.*;
 import java.util.stream.Collectors;
 
 import org.jgrapht.*;
-import org.jgrapht.alg.shortestpath.*;
+import org.jgrapht.ext.DOTExporter;
+import org.jgrapht.ext.ExportException;
+import org.jgrapht.ext.GraphExporter;
 import org.jgrapht.graph.*;
 import org.jgrapht.generate.*;
+import org.jgrapht.alg.shortestpath.*;
 
 import org.jgrapht.alg.ConnectivityInspector;
 
@@ -13,7 +17,7 @@ public class MapModel {
     public static class Node {
         public final int id;
 
-        private static int next_id = 0;
+        private static int next_id = 1;
         private static HashMap<Integer, Node> nodes = new HashMap<>();
 
         public static Node getNodeByID(int id) {
@@ -116,9 +120,9 @@ public class MapModel {
     public static MapModel generate(int n) {
         MapModel model = new MapModel();
 
-        double p = 0.5;
+//        double p = 0.5;
         long seed = 42;
-        GraphGenerator<Node, Edge, Node> generator = new GnpRandomGraphGenerator<>(n, p, seed);
+        GraphGenerator<Node, Edge, Node> generator = new ScaleFreeGraphGenerator<>(n, seed);
         generator.generateGraph(model.graph, () -> new Node(), null);
 
         ListenableUndirectedGraph<Node, Edge> g = new ListenableUndirectedGraph<>(model.graph);
@@ -151,6 +155,15 @@ public class MapModel {
 
     public Route emptyRoute() {
         return new Route(new GraphWalk<Node, Edge>(graph, new ArrayList<>(), 0));
+    }
+
+    public void exportToDot()
+        throws ExportException {
+        GraphExporter<Node, Edge> exporter = new DOTExporter<>(
+                (Node node) -> Integer.toString(node.id),
+                null, null
+        );
+        exporter.exportGraph(graph, new File("graph.dot"));
     }
 
     private MapModel() {
