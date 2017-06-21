@@ -13,29 +13,15 @@ import java.util.*;
 
 public class DriverSearchBehaviour extends ContractNetInitiator {
 
-    public interface AcceptDecisionMaker {
-        default boolean accept(double payment) {
-            return true;
-        }
-
-        default void noProposals() {}
-
-        default void onConfirm() {}
-
-        default void onEnd() {}
-    }
-
+    private final Driver driver;
     private final MapModel.Intention intention;
-    private final AcceptDecisionMaker decisionMaker;
     private final WaitConfirmBehaviour waitConfirmBehaviour;
-    private double payment;
 
-    public DriverSearchBehaviour(Agent agent, MapModel.Intention intention, AcceptDecisionMaker decisionMaker) {
+    public DriverSearchBehaviour(DriverAgent agent, MapModel.Intention intention) {
         super(agent, createCFP(intention));
+        this.driver = agent;
         this.intention = intention;
-        this.decisionMaker = decisionMaker;
         this.waitConfirmBehaviour = new WaitConfirmBehaviour();
-        this.payment = -1;
 
         registerHandleInform(waitConfirmBehaviour);
     }
@@ -88,7 +74,7 @@ public class DriverSearchBehaviour extends ContractNetInitiator {
             System.exit(1);
         }
         if (receiversCnt == 0) {
-            decisionMaker.noProposals();
+            driver.acceptCurrentRoute();
         }
         // We want to receive a reply in 10 secs
         cfps.get(0).setReplyByDate(new Date(System.currentTimeMillis() + 10 * 1000));
@@ -105,7 +91,7 @@ public class DriverSearchBehaviour extends ContractNetInitiator {
             if (rsp.getPerformative() == ACLMessage.PROPOSE) {
                 JSONObject content = new JSONObject(rsp.getContent());
                 AID sender = rsp.getSender();
-                payment = content.getDouble("payment");
+                double payment = content.getDouble("payment");
                 offers.add(new Offer(rsp, payment));
 
                 System.out.printf(
@@ -123,16 +109,7 @@ public class DriverSearchBehaviour extends ContractNetInitiator {
         }
 
         if (offers.isEmpty()) {
-            if (!busy.isEmpty()) {
-                ACLMessage cfp = createCFP(intention);
-                for (AID receiver: busy) {
-                    cfp.addReceiver(receiver);
-                }
-                Vector vec = new Vector();
-                vec.add(cfp);
-                newIteration(vec);
-            }
-            decisionMaker.noProposals();
+            driver.acceptCurrentRoute();
             return;
         }
 
@@ -149,7 +126,7 @@ public class DriverSearchBehaviour extends ContractNetInitiator {
         ACLMessage chosen = best.msg;
         ACLMessage reply = chosen.createReply();
 
-        if (decisionMaker.accept(best.payment)) {
+        if (accept(best.payment)) {
             System.out.printf(
                     "%s - have chosen proposal from %s\n",
                     getAgent().getLocalName(),
@@ -162,6 +139,17 @@ public class DriverSearchBehaviour extends ContractNetInitiator {
         }
 
         acceptances.add(reply);
+    }
+
+    private boolean accept(double payment) {
+        if (driver.getCurrentIncome() > -payment) {
+            driver.acceptCurrentRoute();
+            return false;
+        } else if (!driver.hasCurrentRouteChanged()) {
+            return true;
+        }
+        driver.rememberCurrentRoute();
+        return false;
     }
 
     @Override
@@ -179,13 +167,6 @@ public class DriverSearchBehaviour extends ContractNetInitiator {
     public void reset() {
         super.reset();
         waitConfirmBehaviour.reset();
-        payment = -1;
-    }
-
-    @Override
-    public int onEnd() {
-        decisionMaker.onEnd();
-        return super.onEnd();
     }
 
     private class WaitConfirmBehaviour extends OneShotBehaviour {
@@ -221,12 +202,11 @@ public class DriverSearchBehaviour extends ContractNetInitiator {
         }
 
         private void handleConfirm() {
-            DriverSearchBehaviour.this.decisionMaker.onConfirm();
+            DriverSearchBehaviour.this.driver.quitDriving();
             try {
                 ACLMessage notification = new ACLMessage(ACLMessage.INFORM);
                 notification.setContent(new JSONObject()
                         .put("sender-type", "passenger")
-                        .put("payment", payment)
                         .toString()
                 );
 

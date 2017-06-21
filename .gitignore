@@ -4,3 +4,6 @@ APDescription.txt
 MTPs-Main-Container.txt
 build/*
 ui/*
+*.dot
+*.png
+*.txt

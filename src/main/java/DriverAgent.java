@@ -2,6 +2,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 import jade.core.behaviours.TickerBehaviour;
+import jade.core.behaviours.WrapperBehaviour;
 import jade.domain.DFService;
 import jade.domain.FIPAAgentManagement.DFAgentDescription;
 import jade.domain.FIPANames;
@@ -110,25 +111,31 @@ public class DriverAgent extends Agent implements Driver {
     private Plan currPlan;
     private MapModel.Intention intention;
     private CheckProfitBehaviour checkBehaviour;
+    private MapModel.Route initialRoute;
 
     private static final int CAPACITY = 3;
-    private static final long CHECK_PROFIT_PERIOD_MS = 5 * 1000;
+    private static final long CHECK_PROFIT_PERIOD_MS = 2 * 1000;
 
     private static int next_id = 1;
 
     public DriverAgent(MapModel.Intention intention, MapModel map) {
         Set<Destination> destinations = new HashSet<>();
         Map<AID, Double> payments = new HashMap<>();
-        MapModel.Route route = map.getRoute(intention.from, intention.to);
+        this.initialRoute = map.getRoute(intention.from, intention.to);
         this.id = next_id++;
         this.intention = intention;
         this.map = map;
         this.newPlan = null;
         this.prevPlan = null;
-        this.currPlan = new Plan(route, destinations, payments, 0);
+        this.currPlan = new Plan(initialRoute, destinations, payments, 0);
         this.checkBehaviour = new CheckProfitBehaviour();
 
-        System.out.printf("%s - initial route: %s\n", toString(), route.toString());
+        System.out.printf(
+                "%s - initial route: %s; cost = %f\n",
+                toString(),
+                initialRoute.toString(),
+                initialRoute.getCost()
+        );
     }
 
     @Override
@@ -147,30 +154,18 @@ public class DriverAgent extends Agent implements Driver {
         addBehaviour(checkBehaviour);
     }
 
-    private void register() {
-        try {
-            DFAgentDescription dfd = new DFAgentDescription();
-            dfd.setName(getAID());
-            dfd.addServices(CarpoolAgent.DRIVER_SERVICE);
-            DFService.register(this, dfd);
-        } catch (Exception e) {
-            System.out.println("Error: " + e);
-            e.printStackTrace(System.out);
-            System.exit(1);
-        }
+    @Override
+    public double getInitialRouteCost() {
+        return initialRoute.getCost();
     }
 
-    private void deregister() {
-        try {
-            DFService.deregister(this);
-        } catch (Exception e) {
-            System.out.println("Error: " + e);
-            e.printStackTrace(System.out);
-            System.exit(1);
-        }
+    @Override
+    public double getCurrentIncome() {
+        return currPlan.getIncome();
     }
 
-    private void acceptPlan() {
+    @Override
+    public void acceptCurrentRoute() {
         System.out.printf(
                 "%s - accepts plan and sends confirm notifications to waiting passengers\n",
                 getLocalName()
@@ -180,7 +175,6 @@ public class DriverAgent extends Agent implements Driver {
         removeBehaviour(checkBehaviour);
 
         Set<AID> passengers = currPlan.getPassengers();
-        Set<String> passengerNames = passengers.stream().map(AID::getLocalName).collect(Collectors.toSet());
 
         for (AID aid: passengers) {
             ACLMessage confirm = new ACLMessage(ACLMessage.CONFIRM);
@@ -219,15 +213,50 @@ public class DriverAgent extends Agent implements Driver {
         }
     }
 
-    private void quitDriving() {
+    @Override
+    public void quitDriving() {
         System.out.printf("%s - quits driving and becomes a passenger", getLocalName());
 
+        deregister();
         removeBehaviour(checkBehaviour);
 
         for (AID aid: currPlan.getPassengers()) {
             ACLMessage disconfirm = new ACLMessage(ACLMessage.DISCONFIRM);
             disconfirm.addReceiver(aid);
             send(disconfirm);
+        }
+    }
+
+    @Override
+    public void rememberCurrentRoute() {
+        prevPlan = currPlan;
+    }
+
+    @Override
+    public boolean hasCurrentRouteChanged() {
+        return prevPlan == currPlan;
+    }
+
+    private void register() {
+        try {
+            DFAgentDescription dfd = new DFAgentDescription();
+            dfd.setName(getAID());
+            dfd.addServices(CarpoolAgent.DRIVER_SERVICE);
+            DFService.register(this, dfd);
+        } catch (Exception e) {
+            System.out.println("Error: " + e);
+            e.printStackTrace(System.out);
+            System.exit(1);
+        }
+    }
+
+    private void deregister() {
+        try {
+            DFService.deregister(this);
+        } catch (Exception e) {
+            System.out.println("Error: " + e);
+            e.printStackTrace(System.out);
+            System.exit(1);
         }
     }
 
@@ -246,36 +275,13 @@ public class DriverAgent extends Agent implements Driver {
             }
             running = true;
 
-            addBehaviour(new DriverSearchBehaviour(getAgent(), intention,
-                    new DriverSearchBehaviour.AcceptDecisionMaker() {
-                        @Override
-                        public boolean accept(double payment) {
-                            if (currPlan.getIncome() > -payment) {
-                                acceptPlan();
-                                return false;
-                            } else if (currPlan == prevPlan) {
-                                return true;
-                            }
-                            prevPlan = currPlan;
-                            return false;
-                        }
-
-                        @Override
-                        public void noProposals() {
-                            acceptPlan();
-                        }
-
-                        @Override
-                        public void onConfirm() {
-                            quitDriving();
-                        }
-
-                        @Override
-                        public void onEnd() {
-                            running = false;
-                        }
-                    })
-            );
+            addBehaviour(new WrapperBehaviour(new DriverSearchBehaviour(DriverAgent.this, intention)) {
+                @Override
+                public int onEnd() {
+                    running = false;
+                    return getWrappedBehaviour().onEnd();
+                }
+            });
         }
     }
 
