@@ -35,10 +35,10 @@ public class CarpoolAgent extends Agent {
 
     protected void setup() {
         try {
-            map = MapModel.generate(20);
+            map = MapModel.generate(100);
             map.exportToDot();
 
-            ArrayList<DriverAgent> drivers = generateVehicles(10, map);
+            ArrayList<DriverAgent> drivers = generateDrivers(30, map);
 
             DFAgentDescription dfd = new DFAgentDescription();
             dfd.setName(getAID());
@@ -150,7 +150,7 @@ public class CarpoolAgent extends Agent {
         }
     }
 
-    private static ArrayList<DriverAgent> generateVehicles(int n, MapModel map) {
+    private static ArrayList<DriverAgent> generateDrivers(int n, MapModel map) {
         ArrayList<DriverAgent> vehicles = new ArrayList<>(n);
         ArrayList<MapModel.Node> nodes = new ArrayList<>(map.getGraph().vertexSet());
         Random rnd = new Random();

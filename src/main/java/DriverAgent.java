@@ -102,7 +102,7 @@ public class DriverAgent extends Agent implements Driver {
         }
     }
 
-    private static final double DRIVER_PREMIUM = 1;
+    private static final double DRIVER_PREMIUM = 0;
 
     private final int id;
     private MapModel map;
@@ -110,11 +110,17 @@ public class DriverAgent extends Agent implements Driver {
     private Plan prevPlan;
     private Plan currPlan;
     private MapModel.Intention intention;
+    private NegotiationBehavior negotiationBehavior;
     private CheckProfitBehaviour checkBehaviour;
     private MapModel.Route initialRoute;
+    private Set<AID> blackList;
+    private boolean checkRunning;
+    private int attemptCnt;
+    private boolean isDone;
 
     private static final int CAPACITY = 3;
-    private static final long CHECK_PROFIT_PERIOD_MS = 2 * 1000;
+    private static final int MAX_ATTEMPT_COUNT = 3;
+    private static final long CHECK_PROFIT_PERIOD_MS = 3 * 1000;
 
     private static int next_id = 1;
 
@@ -128,7 +134,12 @@ public class DriverAgent extends Agent implements Driver {
         this.newPlan = null;
         this.prevPlan = null;
         this.currPlan = new Plan(initialRoute, destinations, payments, 0);
+        this.negotiationBehavior = new NegotiationBehavior(this);
         this.checkBehaviour = new CheckProfitBehaviour();
+        this.blackList = new HashSet<>();
+        this.checkRunning = false;
+        this.attemptCnt = 0;
+        this.isDone = false;
 
         System.out.printf(
                 "%s - initial route: %s; cost = %f\n",
@@ -150,7 +161,7 @@ public class DriverAgent extends Agent implements Driver {
         );
 
         register();
-        addBehaviour(new NegotiationBehavior(this));
+        addBehaviour(negotiationBehavior);
         addBehaviour(checkBehaviour);
     }
 
@@ -165,6 +176,16 @@ public class DriverAgent extends Agent implements Driver {
     }
 
     @Override
+    public void incAttemptCount() {
+        ++attemptCnt;
+    }
+
+    @Override
+    public boolean inBlackList(AID aid) {
+        return blackList.contains(aid);
+    }
+
+    @Override
     public void acceptCurrentRoute() {
         System.out.printf(
                 "%s - accepts plan and sends confirm notifications to waiting passengers\n",
@@ -172,6 +193,7 @@ public class DriverAgent extends Agent implements Driver {
         );
 
         deregister();
+        isDone = true;
         removeBehaviour(checkBehaviour);
 
         Set<AID> passengers = currPlan.getPassengers();
@@ -215,9 +237,10 @@ public class DriverAgent extends Agent implements Driver {
 
     @Override
     public void quitDriving() {
-        System.out.printf("%s - quits driving and becomes a passenger", getLocalName());
+        System.out.printf("%s - quits driving and becomes a passenger\n", getLocalName());
 
         deregister();
+        isDone = true;
         removeBehaviour(checkBehaviour);
 
         for (AID aid: currPlan.getPassengers()) {
@@ -262,23 +285,25 @@ public class DriverAgent extends Agent implements Driver {
 
     private class CheckProfitBehaviour extends TickerBehaviour {
 
-        private boolean running = false;
-
         CheckProfitBehaviour() {
-            super(DriverAgent.this, CHECK_PROFIT_PERIOD_MS + new Random().nextInt(1000));
+            super(DriverAgent.this, CHECK_PROFIT_PERIOD_MS + new Random().nextInt(10 * 1000));
         }
 
         @Override
         protected void onTick() {
-            if (running) {
+            if (attemptCnt == MAX_ATTEMPT_COUNT) {
+                acceptCurrentRoute();
                 return;
             }
-            running = true;
+            if (checkRunning) {
+                return;
+            }
+            checkRunning = true;
 
             addBehaviour(new WrapperBehaviour(new DriverSearchBehaviour(DriverAgent.this, intention)) {
                 @Override
                 public int onEnd() {
-                    running = false;
+                    checkRunning = false;
                     return getWrappedBehaviour().onEnd();
                 }
             });
@@ -296,19 +321,15 @@ public class DriverAgent extends Agent implements Driver {
             AID sender = cfp.getSender();
             DriverAgent agent = (DriverAgent) getAgent();
 
-            if (agent.newPlan != null) {
+            if (agent.isDone) {
                 System.out.printf(
-                        "%s - receive cfp from %s but it is busy now\n",
+                        "%s - receive cfp from %s but it is no longer provides service\n",
                         getAgent().getLocalName(),
                         sender.getLocalName()
                 );
 
                 ACLMessage refuse = cfp.createReply();
                 refuse.setPerformative(ACLMessage.REFUSE);
-                refuse.setContent(new JSONObject()
-                        .put("reason", "busy")
-                        .toString()
-                );
                 return refuse;
             }
 
@@ -340,10 +361,12 @@ public class DriverAgent extends Agent implements Driver {
             );
 
             MapModel.Route passengerRoute = routes.get(sender);
-            double passengerPayment = Math.max(
-                    Math.abs(agent.currPlan.route.getCost() - vehicleRoute.getCost()) + DRIVER_PREMIUM,
-                    passengerRoute.getCost()
-            );
+//            double passengerPayment = Math.max(
+//                    Math.abs(agent.currPlan.route.getCost() - vehicleRoute.getCost()) + DRIVER_PREMIUM,
+//                    passengerRoute.getCost()
+//            );
+            double passengerPayment =
+                    Math.abs(agent.currPlan.route.getCost() - vehicleRoute.getCost()) + DRIVER_PREMIUM;
             Map<AID, Double> newPayments = new HashMap<>(agent.currPlan.payments);
             newPayments.put(sender, passengerPayment);
             double totalPayment = agent.currPlan.totalPayment + passengerPayment;
@@ -363,7 +386,7 @@ public class DriverAgent extends Agent implements Driver {
                     newPlan.getIncome(), passengerPayment
             );
 
-            if (newPlan.getIncome() > agent.currPlan.getIncome()) {
+            if (newPlan.getIncome() >= agent.currPlan.getIncome()) {
                 System.out.println(String.format(
                         "%s - proposes route for %s",
                         getAgent().getLocalName(),
@@ -377,6 +400,9 @@ public class DriverAgent extends Agent implements Driver {
                         .toString()
                 );
                 agent.newPlan = newPlan;
+
+                agent.blackList.add(cfp.getSender());
+
                 return propose;
             } else {
                 System.out.println(String.format(
@@ -399,33 +425,47 @@ public class DriverAgent extends Agent implements Driver {
         protected ACLMessage handleAcceptProposal(
                 ACLMessage cfp, ACLMessage propose, ACLMessage accept
         ) {
+            DriverAgent agent = (DriverAgent) getAgent();
+
+            if (agent.isDone) {
+                System.out.printf(
+                        "%s - receives accept from %s and sends failure\n",
+                        getAgent().getLocalName(),
+                        accept.getSender().getLocalName()
+                );
+
+                ACLMessage failure = accept.createReply();
+                failure.setPerformative(ACLMessage.FAILURE);
+                return failure;
+            }
+
             System.out.printf(
-                    "%s - receives accept from %s\n",
+                    "%s - receives accept from %s and sends inform\n",
                     getAgent().getLocalName(),
                     accept.getSender().getLocalName()
             );
 
-            DriverAgent agent = (DriverAgent) getAgent();
             agent.currPlan = agent.newPlan;
             agent.newPlan = null;
 
-            ACLMessage inform = new ACLMessage(ACLMessage.INFORM);
-            inform.addReceiver(accept.getSender());
+            ACLMessage inform = accept.createReply();
+            inform.setPerformative(ACLMessage.INFORM);
             return inform;
         }
 
         @Override
         protected void handleRejectProposal(
-                ACLMessage cfp, ACLMessage propose, ACLMessage accept
+                ACLMessage cfp, ACLMessage propose, ACLMessage reject
         ) {
             System.out.printf(
                     "%s - receives reject from %s\n",
                     getAgent().getLocalName(),
-                    accept.getSender().getLocalName()
+                    reject.getSender().getLocalName()
             );
 
             DriverAgent agent = (DriverAgent) getAgent();
             agent.newPlan = null;
+            agent.blackList.remove(reject.getSender());
         }
 
         private MapModel.Route computeRoute(

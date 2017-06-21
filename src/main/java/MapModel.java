@@ -167,7 +167,7 @@ public class MapModel {
     }
 
     private MapModel() {
-        graph = new SimpleGraph<Node, Edge>(Edge.class);
+        graph = new SimpleGraph<>(Edge.class);
         dijkstra = new DijkstraShortestPath<>(graph);
     }
 }

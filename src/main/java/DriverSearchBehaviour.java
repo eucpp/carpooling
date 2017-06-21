@@ -51,7 +51,7 @@ public class DriverSearchBehaviour extends ContractNetInitiator {
     @Override
     protected Vector<ACLMessage> prepareCfps(ACLMessage __) {
         System.out.printf(
-                "%s prepares cfps ...\n",
+                "%s - prepares cfps ...\n",
                 getAgent().getLocalName()
         );
 
@@ -63,9 +63,17 @@ public class DriverSearchBehaviour extends ContractNetInitiator {
             template.addServices(CarpoolAgent.DRIVER_SERVICE);
             DFAgentDescription[] descriptions = DFService.search(getAgent(), template);
             for (DFAgentDescription description: descriptions) {
-                if (description.getName().equals(getAgent().getAID())) {
+                if (description.getName().equals(getAgent().getAID())
+                        || driver.inBlackList(description.getName())) {
                     continue;
                 }
+
+                System.out.printf(
+                        "%s - sends cfp to %s\n",
+                        getAgent().getLocalName(),
+                        description.getName().getLocalName()
+                );
+
                 cfps.get(0).addReceiver(description.getName());
                 receiversCnt++;
             }
@@ -84,7 +92,6 @@ public class DriverSearchBehaviour extends ContractNetInitiator {
     @Override
     protected void handleAllResponses(Vector responses, Vector acceptances) {
         ArrayList<Offer> offers = new ArrayList<>();
-        ArrayList<AID> busy = new ArrayList<>();
         for (Object obj : responses) {
             ACLMessage rsp = (ACLMessage) obj;
 
@@ -100,16 +107,11 @@ public class DriverSearchBehaviour extends ContractNetInitiator {
                         sender.getLocalName(),
                         payment
                 );
-            } else if (rsp.getPerformative() == ACLMessage.REFUSE) {
-                JSONObject content = new JSONObject(rsp.getContent());
-                if (content.getString("reason").equals("busy")) {
-                    busy.add(rsp.getSender());
-                }
             }
         }
 
         if (offers.isEmpty()) {
-            driver.acceptCurrentRoute();
+            driver.incAttemptCount();
             return;
         }
 
@@ -121,6 +123,10 @@ public class DriverSearchBehaviour extends ContractNetInitiator {
             ACLMessage rejectMsg = msg.createReply();
             rejectMsg.setPerformative(ACLMessage.REJECT_PROPOSAL);
             acceptances.add(rejectMsg);
+
+//            if (offers.get(i).payment > driver.getInitialRouteCost()) {
+//                driver.addToBlackList(msg.getSender());
+//            }
         }
 
         ACLMessage chosen = best.msg;
