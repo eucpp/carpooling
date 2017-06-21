@@ -123,10 +123,6 @@ public class DriverSearchBehaviour extends ContractNetInitiator {
             ACLMessage rejectMsg = msg.createReply();
             rejectMsg.setPerformative(ACLMessage.REJECT_PROPOSAL);
             acceptances.add(rejectMsg);
-
-//            if (offers.get(i).payment > driver.getInitialRouteCost()) {
-//                driver.addToBlackList(msg.getSender());
-//            }
         }
 
         ACLMessage chosen = best.msg;
@@ -139,6 +135,7 @@ public class DriverSearchBehaviour extends ContractNetInitiator {
                     chosen.getSender().getLocalName()
             );
 
+            reply.setReplyByDate(new Date(System.currentTimeMillis() + 10 * 1000));
             reply.setPerformative(ACLMessage.ACCEPT_PROPOSAL);
         } else {
             reply.setPerformative(ACLMessage.REJECT_PROPOSAL);

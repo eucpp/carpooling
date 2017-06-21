@@ -122,7 +122,9 @@ public class MapModel {
 
 //        double p = 0.5;
         long seed = 42;
-        GraphGenerator<Node, Edge, Node> generator = new ScaleFreeGraphGenerator<>(n, seed);
+        Random rnd = new Random(seed);
+
+        GraphGenerator<Node, Edge, Node> generator = new StarGraphGenerator<>(n);
         generator.generateGraph(model.graph, () -> new Node(), null);
 
         ListenableUndirectedGraph<Node, Edge> g = new ListenableUndirectedGraph<>(model.graph);

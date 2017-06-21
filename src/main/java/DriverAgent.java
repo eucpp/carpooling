@@ -102,8 +102,6 @@ public class DriverAgent extends Agent implements Driver {
         }
     }
 
-    private static final double DRIVER_PREMIUM = 0;
-
     private final int id;
     private MapModel map;
     private Plan newPlan;
@@ -121,6 +119,7 @@ public class DriverAgent extends Agent implements Driver {
     private static final int CAPACITY = 3;
     private static final int MAX_ATTEMPT_COUNT = 3;
     private static final long CHECK_PROFIT_PERIOD_MS = 3 * 1000;
+    private static final double DRIVER_PREMIUM = 0;
 
     private static int next_id = 1;
 
@@ -194,7 +193,6 @@ public class DriverAgent extends Agent implements Driver {
 
         deregister();
         isDone = true;
-        removeBehaviour(checkBehaviour);
 
         Set<AID> passengers = currPlan.getPassengers();
 
@@ -241,7 +239,6 @@ public class DriverAgent extends Agent implements Driver {
 
         deregister();
         isDone = true;
-        removeBehaviour(checkBehaviour);
 
         for (AID aid: currPlan.getPassengers()) {
             ACLMessage disconfirm = new ACLMessage(ACLMessage.DISCONFIRM);
@@ -291,11 +288,15 @@ public class DriverAgent extends Agent implements Driver {
 
         @Override
         protected void onTick() {
-            if (attemptCnt == MAX_ATTEMPT_COUNT) {
-                acceptCurrentRoute();
+            if (isDone) {
+                removeBehaviour(this);
                 return;
             }
             if (checkRunning) {
+                return;
+            }
+            if (attemptCnt == MAX_ATTEMPT_COUNT) {
+                acceptCurrentRoute();
                 return;
             }
             checkRunning = true;
@@ -330,6 +331,10 @@ public class DriverAgent extends Agent implements Driver {
 
                 ACLMessage refuse = cfp.createReply();
                 refuse.setPerformative(ACLMessage.REFUSE);
+                refuse.setContent(new JSONObject()
+                        .put("reason", "busy")
+                        .toString()
+                );
                 return refuse;
             }
 

@@ -35,10 +35,10 @@ public class CarpoolAgent extends Agent {
 
     protected void setup() {
         try {
-            map = MapModel.generate(100);
+            map = MapModel.generate(20);
             map.exportToDot();
 
-            ArrayList<DriverAgent> drivers = generateDrivers(30, map);
+            ArrayList<DriverAgent> drivers = generateDrivers(10, map);
 
             DFAgentDescription dfd = new DFAgentDescription();
             dfd.setName(getAID());
@@ -72,9 +72,16 @@ public class CarpoolAgent extends Agent {
 
                     assert !ready.containsKey(sender);
 
-                    System.out.printf("Carpool - receive inform from %s\n", sender.getLocalName());
-
                     ready.put(sender, content);
+
+                    String waitFor = String.join(", ", agents.stream()
+                            .filter(aid -> !ready.containsKey(aid))
+                            .map(AID::getLocalName)
+                            .collect(Collectors.toSet())
+                    );
+
+                    System.out.printf("Carpool - receive inform from %s\n", sender.getLocalName());
+                    System.out.printf("Carpool - still wait for: %s\n", waitFor);
                 }
 
                 @Override
@@ -153,7 +160,7 @@ public class CarpoolAgent extends Agent {
     private static ArrayList<DriverAgent> generateDrivers(int n, MapModel map) {
         ArrayList<DriverAgent> vehicles = new ArrayList<>(n);
         ArrayList<MapModel.Node> nodes = new ArrayList<>(map.getGraph().vertexSet());
-        Random rnd = new Random();
+        Random rnd = new Random(42);
         for (int i = 0; i < n; ++i) {
             MapModel.Node from = nodes.get(rnd.nextInt(nodes.size()));
             MapModel.Node to = nodes.get(rnd.nextInt(nodes.size()));
